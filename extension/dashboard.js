@@ -253,6 +253,9 @@ function psDivToHfi(psDiv) {
 }
 
 // Compute field-strength-adjusted stage percentage.
+// Classifier stages are intentionally skipped: official classifier percentages
+// are already normalized against USPSA national division data, so applying this
+// match-field adjustment would double-normalize them.
 //
 // Two-pass strategy:
 //   Pass 1 — own division first. If the shooter's division has a GM or M median
@@ -272,6 +275,7 @@ function psDivToHfi(psDiv) {
 //
 // Returns { adjPct, adjClass, refDiv, refClass, refHF, normHF, method } or null.
 function computeAdjustedPct(stage, shooterDiv) {
+  if (isClassifierStage(stage)) return null;
   if (!stage.hf || stage.hf <= 0) return null;
 
   const myDivKey = psDivToHfi(shooterDiv);
@@ -1027,8 +1031,9 @@ function renderAll() {
     if (adjAvgLbl) adjAvgLbl.textContent = adjBand ? `Adj Avg · ${adjBand.label} Class` : 'Adj Avg %';
     adjAvgBox.dataset.tip =
       `Field-strength adjusted average (${adjMatchPcts.length} match${adjMatchPcts.length > 1 ? 'es' : ''}).\n` +
-      `Uses the best HF from any division at each match,\n` +
+      `Uses non-classifier stages and the best HF from any division at each match,\n` +
       `normalized to your division using HHF ratios from hitfactor.info.\n` +
+      `Classifier stages are skipped because USPSA % is already nationally normalized.\n` +
       `This gives a more accurate read when no GM/Master is in your division.\n` +
       `Raw avg: ${avg.toFixed(1)}% → Adjusted: ${adjAvg.toFixed(1)}% (${adjBand?.label || '?'} class)`;
     adjAvgBox.style.display = '';
@@ -1787,6 +1792,9 @@ function renderMatchList() {
             adjTd.title = `Field-adjusted: your HF (${s.hf?.toFixed(4)}) vs ${methodLabel} in ${adj.refDiv} (${adj.refHF?.toFixed(4)} HF)\n`
               + `Normalized to ${match.division}: ${adj.normHF?.toFixed(4)} HF\n`
               + `${s.hf?.toFixed(4)} / ${adj.normHF?.toFixed(4)} = ${adj.adjPct.toFixed(1)}% (${adj.adjClass} class)`;
+          } else if (clf) {
+            adjTd.textContent = '—';
+            adjTd.title = 'Classifier stage — official classifier percentages are already normalized against national division data, so adjusted % is not applied.';
           } else {
             adjTd.textContent = '—';
             adjTd.title = 'No cross-division data available for this stage';
