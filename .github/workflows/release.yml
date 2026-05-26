@@ -6,6 +6,7 @@ on:
     paths:
       - 'extension/**'
       - 'CHANGELOG.md'
+      - '.github/workflows/release.yml'
 
 jobs:
   release:
