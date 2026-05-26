@@ -14,7 +14,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 
 - **Score over time** — match percentage plotted chronologically with USPSA classification bands (GM / M / A / B / C / D); Y-axis warped so higher classes get proportional visual space
 - **Placement chart** — finish position at each match, normalized to field size
-- **Per-stage breakdown** — expand any match row to see hits, HF, and percentage for every stage; classifier stages show official USPSA % (vs national reference HF) as the primary number
+- **Per-stage breakdown** — expand any match row to see hits, HF, and percentage for every stage; classifier stages show official USPSA % (vs national reference HF) as the primary number; individual stages can be excluded from ratings with an optional note
 - **Division-aware** — automatically detects which division you shot in each match and shows division-specific results
 - **Field-strength adjusted %** — finds the strongest competitor across all divisions at each match (GM median HF preferred, then Master, then top HF), translates their score to your division's scale using hitfactor.info HHF ratios, and measures you against that benchmark — a more reliable indicator of improvement than raw division % when your division draw varies
 - **Chart summaries** — automatic plain-English insight below each chart: score trend (last 3 vs baseline), adjusted % context, placement percentile, and classifier trend using the national HHF reference
@@ -128,6 +128,10 @@ Click the **All Time** pill above the chart to filter by year, or choose **Custo
 ### Filtering matches
 
 Each USPSA match row has a checkbox. Uncheck a match to exclude it from charts without deleting it.
+
+### Filtering stages
+
+Expand a match row to manage individual stages. Each stage is selected by default. Uncheck **Factor**, optionally add a note such as “gun broke,” then click **Apply stage filters** to omit that stage from match performance, adjusted %, accuracy, and hit-zone aggregates while keeping it visible in the history table.
 
 ### Refreshing a single match
 
