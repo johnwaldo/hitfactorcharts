@@ -16,7 +16,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 - **Placement chart** — finish position at each match, normalized to field size
 - **Per-stage breakdown** — expand any match row to see hits, HF, and percentage for every stage; classifier stages show official USPSA % (vs national reference HF) as the primary number; individual stages can be excluded from ratings with an optional note
 - **Division-aware** — automatically detects which division you shot in each match and shows division-specific results
-- **Field-strength adjusted %** — finds the strongest competitor across all divisions at each match (GM median HF preferred, then Master, then top HF), translates their score to your division's scale using hitfactor.info HHF ratios, and measures you against that benchmark — a more reliable indicator of improvement than raw division % when your division draw varies
+- **Field-strength adjusted %** — for non-classifier stages, finds the strongest competitor across all divisions at each match (GM median HF preferred, then Master, then top HF), translates their score to your division's scale using hitfactor.info HHF ratios, and measures you against that benchmark — a more reliable indicator of improvement than raw division % when your division draw varies
 - **Chart summaries** — automatic plain-English insight below each chart: score trend (last 3 vs baseline), adjusted % context, placement percentile, and classifier trend using the national HHF reference
 - **Classifier tracking** — overlay of your classifier scores against your running average; identifies each CM by number and links to the USPSA stage description PDF
 - **Consistency card** — match-to-match score variance and accuracy loss metrics
@@ -37,13 +37,13 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 
 **Division %** is your score relative to the top shooter in your division at that match. It tells you how you placed that day, but it only reflects who happened to show up in your division — if no GM competed in your division, even a mediocre performance can read as 90%+.
 
-**Adjusted %** is a field-strength correction calculated in two steps:
+**Adjusted %** is a field-strength correction for non-classifier stages, calculated in two steps:
 
 1. **Own division first** — if a GM or Master competed in your division at that match, their median hit factor is used as the reference directly. No cross-division math needed; you're measured against the actual elite competition that was present.
 
 2. **Cross-division fallback** — if no GM or Master competed in your division, the extension finds the strongest competitor across all other divisions (GM median preferred, then Master, then top HF), translates their hit factor to your division's equivalent using national HHF ratios from [hitfactor.info](https://hitfactor.info), and uses that as the reference. This corrects for weak-field matches where winning your division by default would otherwise inflate the score.
 
-A 75% adjusted score means you performed at solid A-class level against the strongest competition at that match — whether they were in your division or another. Adjusted % is the better indicator of actual improvement over time because it accounts for who actually showed up, not just who showed up in your specific division.
+A 75% adjusted score means you performed at solid A-class level against the strongest competition at that match — whether they were in your division or another. Adjusted % is the better indicator of actual improvement over time because it accounts for who actually showed up, not just who showed up in your specific division. Classifier stages are excluded from adjusted % because official classifier percentages are already normalized against USPSA national division data.
 
 ---
 
