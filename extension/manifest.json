@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Hit Factor Charts",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Track your USPSA match performance: division %, adjusted field-strength scores, classifier trends, and placement over time.",
   "permissions": ["tabs", "scripting", "storage"],
   "host_permissions": ["https://practiscore.com/*", "https://s3.amazonaws.com/*", "https://api.github.com/*", "https://uspsa.org/*", "https://objects.githubusercontent.com/*"],
