@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'extension/**'
+      - 'CHANGELOG.md'
 
 jobs:
   release:
@@ -44,12 +45,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Extract commit messages since last tag
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -n "$LAST_TAG" ]; then
-            NOTES=$(git log "${LAST_TAG}..HEAD" --pretty=format:"- %s" --no-merges | grep -v "^- chore:" || true)
-          else
-            NOTES=$(git log --pretty=format:"- %s" --no-merges -10 | grep -v "^- chore:" || true)
+          export VERSION="${{ steps.version.outputs.version }}"
+          NOTES=$(python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          path = Path("CHANGELOG.md")
+          if not path.exists():
+              raise SystemExit(0)
+
+          text = path.read_text()
+          pattern = re.compile(rf"^## v{re.escape(version)}[^\n]*\n(?P<body>.*?)(?=^## v|\Z)", re.M | re.S)
+          match = pattern.search(text)
+          if match:
+              print(match.group("body").strip())
+          PY
+          )
+
+          if [ -z "$NOTES" ]; then
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LAST_TAG" ]; then
+              NOTES=$(git log "${LAST_TAG}..HEAD" --pretty=format:"- %s" --no-merges | grep -v "^- chore:" || true)
+            else
+              NOTES=$(git log --pretty=format:"- %s" --no-merges -10 | grep -v "^- chore:" || true)
+            fi
           fi
 
           gh release create "${{ steps.version.outputs.tag }}" \

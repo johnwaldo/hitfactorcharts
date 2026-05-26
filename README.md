@@ -177,6 +177,14 @@ A helper script is included to package the extension for distribution:
 
 This creates `dist/HitFactorCharts.zip` containing only the extension files, ready to share or submit to the Chrome Web Store.
 
+### Release checklist
+
+Before bumping `extension/manifest.json` and publishing a GitHub release:
+
+1. Update `CHANGELOG.md` with user-facing feature, fix, and documentation callouts for the new version.
+2. Run `./build.sh` and the syntax checks listed in recent PRs.
+3. Push the release commit to `main`; the release workflow uses the matching changelog section for GitHub release notes.
+
 ---
 
 ## Project structure
