@@ -203,6 +203,7 @@ async function restoreFromSync() {
 // allResults declared at top of file to prevent TDZ in early event handlers
 let currentView      = 'ranked'; // 'ranked' | 'all'
 let deselectedMatches = new Set(); // match IDs manually excluded from charts
+let stageOverrides    = {};     // match_id -> stage key -> { included: false, note: string }
 let selectedDiv       = null;     // division filter for stats + charts (null = All)
 let selectedYear      = null;     // year filter for charts (null = All Time)
 let selectedDateRange = null;    // custom range { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' } or null
@@ -550,6 +551,60 @@ function saveDeselected() {
   chrome.storage.local.set({ deselectedMatches: [...deselectedMatches] });
 }
 
+function stageKey(stage, index) {
+  const num = stage?.num != null ? String(stage.num).padStart(2, '0') : String(index + 1).padStart(2, '0');
+  return `${num}|${normalizeStgName(stage?.name || '')}`;
+}
+
+function getStageOverride(match, stage, index) {
+  return stageOverrides?.[match.match_id]?.[stageKey(stage, index)] || {};
+}
+
+function isStageIncluded(match, stage, index) {
+  return getStageOverride(match, stage, index).included !== false;
+}
+
+function getMetricStages(match) {
+  if (!match?.stages?.length) return [];
+  return match.stages.filter((stage, index) => isStageIncluded(match, stage, index));
+}
+
+function excludedStageCount(match) {
+  if (!match?.stages?.length) return 0;
+  return match.stages.length - getMetricStages(match).length;
+}
+
+function hasExcludedStages(match) {
+  return excludedStageCount(match) > 0;
+}
+
+function filteredStagePct(match) {
+  if (!hasExcludedStages(match)) return null;
+  const pcts = getMetricStages(match).map(s => s.pct).filter(v => v != null);
+  return pcts.length ? _avg(pcts) : null;
+}
+
+function effectiveOverallPct(match) {
+  return filteredStagePct(match) ?? match.overall_pct ?? null;
+}
+
+function effectiveDivPct(match) {
+  return filteredStagePct(match) ?? match.div_pct ?? match.overall_pct ?? null;
+}
+
+async function saveStageOverrides() {
+  await chrome.storage.local.set({ stageOverrides });
+}
+
+function setMatchStageOverrides(matchId, nextOverrides) {
+  if (Object.keys(nextOverrides).length) {
+    stageOverrides = { ...stageOverrides, [matchId]: nextOverrides };
+  } else {
+    const { [matchId]: _removed, ...rest } = stageOverrides;
+    stageOverrides = rest;
+  }
+}
+
 // ── Input lock / edit ─────────────────────────────────────────────────────────
 let _editSnapshot = { member: '', name: '' }; // values before edit started
 
@@ -600,8 +655,9 @@ saveBtn.addEventListener('click', async () => {
       return;
     }
     // Clear cache and reset UI
-    await chrome.storage.local.remove(['matchCache', 'lastMatchList']);
+    await chrome.storage.local.remove(['matchCache', 'lastMatchList', 'stageOverrides']);
     allResults = [];
+    stageOverrides = {};
     summaryBar.classList.remove('visible');
     chartsEl.classList.remove('visible');
     matchHistory.classList.remove('visible');
@@ -632,7 +688,7 @@ function hideOnboarding() {
 }
 
 // ── Restore persisted state on load ──────────────────────────────────────────
-chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'classificationData'], async d => {
+chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData'], async d => {
   // Try restoring from sync if local has no credentials (e.g. after reinstall)
   if (!d.memberNumber && !d.name) {
     await restoreFromSync();
@@ -645,6 +701,7 @@ chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache',
   if (d.memberNumber) memberInput.value = d.memberNumber;
   if (d.name)         nameInput.value   = d.name;
   if (d.deselectedMatches) deselectedMatches = new Set(d.deselectedMatches);
+  if (d.stageOverrides && typeof d.stageOverrides === 'object') stageOverrides = d.stageOverrides;
 
   // Lock inputs if we already have saved credentials
   if (d.memberNumber || d.name) {
@@ -743,8 +800,9 @@ fetchBtn.addEventListener('click', async () => {
       'Your member number or name has changed. This will clear all cached match data and re-fetch everything.\n\nContinue?'
     );
     if (!ok) return;
-    await chrome.storage.local.remove(['matchCache', 'lastMatchList']);
+    await chrome.storage.local.remove(['matchCache', 'lastMatchList', 'stageOverrides']);
     allResults = [];
+    stageOverrides = {};
     summaryBar.classList.remove('visible');
     chartsEl.classList.remove('visible');
     matchHistory.classList.remove('visible');
@@ -917,8 +975,8 @@ function renderAll() {
   // 'ranked' = confirmed by member number, % score required
   // 'all'    = any scored match (% or HF), including HF-only results
   const chartable = currentView === 'ranked'
-    ? uspsaBase.filter(r => r.found_by === 'member_number' && r.overall_pct != null)
-    : uspsaBase.filter(r => r.overall_pct != null || r.hf != null);
+    ? uspsaBase.filter(r => r.found_by === 'member_number' && effectiveOverallPct(r) != null)
+    : uspsaBase.filter(r => effectiveOverallPct(r) != null || r.hf != null);
 
   const sorted = [...chartable].sort((a, b) => {
     const da = parseDate(a.date), db = parseDate(b.date);
@@ -959,8 +1017,9 @@ function renderAll() {
     (!selectedDateRange || (r.date >= selectedDateRange.start && r.date <= selectedDateRange.end))
   );
 
-  const avg  = viewSorted.reduce((s, r) => s + (r.overall_pct ?? 0), 0) / (viewSorted.length || 1);
-  const best = viewSorted.length ? Math.max(...viewSorted.map(r => r.overall_pct ?? 0)) : 0;
+  const overallPcts = viewSorted.map(r => effectiveOverallPct(r)).filter(v => v != null);
+  const avg  = overallPcts.length ? _avg(overallPcts) : 0;
+  const best = overallPcts.length ? Math.max(...overallPcts) : 0;
 
   const avgBand  = CLASS_BANDS.find(b => avg  >= b.min && avg  < b.max);
   const bestBand = CLASS_BANDS.find(b => best >= b.min && best < b.max);
@@ -973,21 +1032,25 @@ function renderAll() {
 
   // Stat box tooltips — explain what each metric measures
   const divLabel = selectedDiv ? ` in ${selectedDiv}` : '';
+  const filteredStageTotal = viewSorted.reduce((sum, r) => sum + excludedStageCount(r), 0);
+  const filteredStageTip = filteredStageTotal
+    ? `\n${filteredStageTotal} excluded stage${filteredStageTotal > 1 ? 's are' : ' is'} omitted; filtered match scores use the average included stage %.`
+    : '';
   document.getElementById('statAvgBox').dataset.tip =
     `Your average match score${divLabel}.\n` +
     `Calculated as your points ÷ the match winner's points × 100,\n` +
-    `averaged across all checked matches in the current view.`;
+    `averaged across all checked matches in the current view.` + filteredStageTip;
   document.getElementById('statBestBox').dataset.tip =
     `Your highest single-match score${divLabel}.\n` +
     `Match score = your points ÷ match winner's points × 100.\n` +
-    `Color indicates the USPSA classification band for that score.`;
+    `Color indicates the USPSA classification band for that score.` + filteredStageTip;
 
   // ── Consistency stat card ─────────────────────────────────────────────────
   // Standard deviation of match %. Low stddev = consistent performer.
   // Only shown when ≥3 matches (stddev is meaningless on 1-2 points).
   const consistencyBox = document.getElementById('statConsistencyBox');
   const consistencyVal = document.getElementById('statConsistency');
-  const pcts = viewSorted.map(r => r.overall_pct).filter(v => v != null);
+  const pcts = viewSorted.map(r => effectiveOverallPct(r)).filter(v => v != null);
   if (pcts.length >= 3) {
     const mean   = pcts.reduce((s, v) => s + v, 0) / pcts.length;
     const stddev = Math.sqrt(pcts.reduce((s, v) => s + (v - mean) ** 2, 0) / pcts.length);
@@ -1012,7 +1075,7 @@ function renderAll() {
   const adjMatchPcts = [];
   for (const r of viewSorted) {
     if (!r.stages?.length || !r.division) continue;
-    const adjStages = r.stages
+    const adjStages = getMetricStages(r)
       .map(s => computeAdjustedPct(s, r.division))
       .filter(a => a != null);
     if (!adjStages.length) continue;
@@ -1099,7 +1162,7 @@ function renderAll() {
     const clfPoints = [];
     for (const r of viewSorted) {
       if (!r.stages) continue;
-      for (const s of r.stages) {
+      for (const s of getMetricStages(r)) {
         const clf = isClassifierStage(s);
         if (!clf) continue;
         const officialPct = s.clf_pct ?? null;
@@ -1210,17 +1273,17 @@ function renderAll() {
       byDate.get(r.date).push(r);
     }
     const points = [...byDate.entries()].map(([date, group]) => {
-      const ys = group.map(r => r.div_pct ?? r.overall_pct).filter(v => v != null);
+      const ys = group.map(r => effectiveDivPct(r)).filter(v => v != null);
       const avgY = ys.length ? ys.reduce((s, v) => s + v, 0) / ys.length : null;
       if (group.length === 1) {
         const r = group[0];
         return { date, y: avgY, label: r.match_name, division: r.division, class_: r.class_,
-          overall_pct: r.overall_pct, div_pct: r.div_pct,
+          overall_pct: effectiveOverallPct(r), div_pct: effectiveDivPct(r),
           place: r.div_place ?? r.place, total: r.div_total ?? r.total,
-          foundBy: r.found_by, stages: r.stages || null };
+          foundBy: r.found_by, stages: getMetricStages(r) };
       }
       return { date, y: avgY, label: `${group.length} matches`, multiMatch: group.map(r => ({
-        label: r.match_name, y: r.div_pct ?? r.overall_pct, overall_pct: r.overall_pct,
+        label: r.match_name, y: effectiveDivPct(r), overall_pct: effectiveOverallPct(r),
         division: r.division, class_: r.class_,
         place: r.div_place ?? r.place, total: r.div_total ?? r.total, foundBy: r.found_by,
       })), division: group[0].division, class_: group[0].class_, overall_pct: avgY };
@@ -1232,7 +1295,7 @@ function renderAll() {
   const adjPoints = [];
   for (const r of viewSorted) {
     if (!r.stages?.length || !r.division) continue;
-    const adjStages = r.stages
+    const adjStages = getMetricStages(r)
       .map(s => computeAdjustedPct(s, r.division))
       .filter(a => a != null);
     if (!adjStages.length) continue;
@@ -1240,7 +1303,7 @@ function renderAll() {
     adjPoints.push({
       date: r.date, y: adjAvg, label: r.match_name,
       division: r.division, class_: classLetterForPct(adjAvg),
-      overall_pct: r.overall_pct,
+      overall_pct: effectiveOverallPct(r),
     });
   }
 
@@ -1280,11 +1343,11 @@ function renderAll() {
         const r = group[0];
         return { date, y: avgY, rawPlace: r.div_place ?? r.place, label: r.match_name,
           division: r.division, class_: r.class_,
-          overall_pct: r.div_pct ?? r.overall_pct, total: r.div_total ?? r.total, foundBy: r.found_by };
+          overall_pct: effectiveDivPct(r) ?? effectiveOverallPct(r), total: r.div_total ?? r.total, foundBy: r.found_by };
       }
       return { date, y: avgY, label: `${group.length} matches`, multiMatch: group.map((r, gi) => ({
         label: r.match_name, y: ys[gi], rawPlace: r.div_place ?? r.place,
-        total: r.div_total ?? r.total, overall_pct: r.div_pct ?? r.overall_pct,
+        total: r.div_total ?? r.total, overall_pct: effectiveDivPct(r) ?? effectiveOverallPct(r),
         division: r.division, class_: r.class_, foundBy: r.found_by,
       })), division: group[0].division, class_: group[0].class_ };
     });
@@ -1317,7 +1380,7 @@ function renderAll() {
   const nonClfPoints = [];
   for (const r of viewSorted) {
     if (!r.stages?.length) continue;
-    const nonClfStages = r.stages.filter(s => s.is_classifier === false || (s.is_classifier == null && !isClassifierStage(s)));
+    const nonClfStages = getMetricStages(r).filter(s => s.is_classifier === false || (s.is_classifier == null && !isClassifierStage(s)));
     if (!nonClfStages.length) continue;
     // Compute avg HF% for non-classifier stages (pct = stage % vs match top HF)
     const pcts = nonClfStages.map(s => s.pct).filter(v => v != null);
@@ -1352,13 +1415,13 @@ function renderAll() {
   // Only rendered when both series have ≥2 points.
   const clfOverlaySection = document.getElementById('chartClfOverlaySection');
   const matchScorePoints  = viewSorted
-    .filter(r => r.overall_pct != null)
-    .map(r => ({ date: r.date, y: r.overall_pct, label: r.match_name, division: r.division, class_: r.class_ }));
+    .filter(r => effectiveOverallPct(r) != null)
+    .map(r => ({ date: r.date, y: effectiveOverallPct(r), label: r.match_name, division: r.division, class_: r.class_ }));
 
   const clfOverlayPoints = [];
   for (const r of viewSorted) {
     if (!r.stages) continue;
-    for (const s of r.stages) {
+    for (const s of getMetricStages(r)) {
       const clf = isClassifierStage(s);
       if (!clf) continue;
       const pct = s.clf_pct ?? s.pct;
@@ -1400,7 +1463,7 @@ function renderAll() {
   for (const r of viewSorted) {
     if (!r.stages?.length) continue;
     let totalM = 0, totalNS = 0, stagesWithHits = 0;
-    for (const s of r.stages) {
+    for (const s of getMetricStages(r)) {
       if (s.m == null && s.ns == null) continue;
       totalM  += s.m  || 0;
       totalNS += s.ns || 0;
@@ -1439,7 +1502,7 @@ function renderAll() {
     if (!r.stages?.length) continue;
     let a = 0, c = 0, d = 0, m = 0, ns = 0;
     let hasHits = false;
-    for (const s of r.stages) {
+    for (const s of getMetricStages(r)) {
       if (s.a == null && s.c == null) continue;
       a  += s.a  || 0;
       c  += s.c  || 0;
@@ -1493,14 +1556,14 @@ function generateSummaries(viewSorted) {
   });
 
   // ── 1. Score over time: last 3 matches vs prior baseline ──────────────────
-  const scoredMatches = sorted.filter(r => r.div_pct != null || r.overall_pct != null);
+  const scoredMatches = sorted.filter(r => effectiveDivPct(r) != null || effectiveOverallPct(r) != null);
   const scoreEl = document.getElementById('chartTimeSummary');
   if (scoreEl) {
     if (scoredMatches.length >= 4) {
       const recent     = scoredMatches.slice(-3);
       const prior      = scoredMatches.slice(0, -3);
-      const recentAvg  = _avg(recent.map(r => r.div_pct ?? r.overall_pct));
-      const priorAvg   = _avg(prior.map(r => r.div_pct ?? r.overall_pct));
+      const recentAvg  = _avg(recent.map(r => effectiveDivPct(r) ?? effectiveOverallPct(r)).filter(v => v != null));
+      const priorAvg   = _avg(prior.map(r => effectiveDivPct(r) ?? effectiveOverallPct(r)).filter(v => v != null));
       const delta      = recentAvg - priorAvg;
       const sign       = delta >= 0 ? '+' : '';
       scoreEl.innerHTML =
@@ -1519,9 +1582,9 @@ function generateSummaries(viewSorted) {
     const pairs = [];
     for (const r of sorted) {
       if (!r.stages?.length || !r.division) continue;
-      const adjs = r.stages.map(s => computeAdjustedPct(s, r.division)).filter(Boolean);
+      const adjs = getMetricStages(r).map(s => computeAdjustedPct(s, r.division)).filter(Boolean);
       if (!adjs.length) continue;
-      const rawPct = r.div_pct ?? r.overall_pct;
+      const rawPct = effectiveDivPct(r) ?? effectiveOverallPct(r);
       if (rawPct == null) continue;
       pairs.push({ adj: _avg(adjs.map(a => a.adjPct)), raw: rawPct });
     }
@@ -1575,7 +1638,7 @@ function generateSummaries(viewSorted) {
     const clfStages = [];
     for (const r of sorted) {
       if (!r.stages) continue;
-      for (const s of r.stages) {
+      for (const s of getMetricStages(r)) {
         if (s.clf_pct != null) clfStages.push(s.clf_pct);
       }
     }
@@ -1632,7 +1695,7 @@ function renderMatchList() {
     // Compute adjusted match % from stage-level cross-division data
     let adjMatchPct = null;
     if (hasStages && match.division) {
-      const adjStages = match.stages
+      const adjStages = getMetricStages(match)
         .map(s => computeAdjustedPct(s, match.division))
         .filter(a => a != null);
       if (adjStages.length > 0) {
@@ -1644,14 +1707,19 @@ function renderMatchList() {
       ? ` · adj ${fmtPct(adjMatchPct)}`
       : '';
 
-    const scoreText = match.overall_pct != null
-      ? fmtPct(match.overall_pct) + adjText + (match.division ? ' · ' + escHtml(match.division) : '') + (match.class_ ? '/' + escHtml(match.class_) : '')
+    const scorePct = effectiveOverallPct(match);
+    const filteredText = hasExcludedStages(match) ? ' · filtered' : '';
+    const scoreText = scorePct != null
+      ? fmtPct(scorePct) + filteredText + adjText + (match.division ? ' · ' + escHtml(match.division) : '') + (match.class_ ? '/' + escHtml(match.class_) : '')
       : null;
 
     const metaParts = [match.date];
     if (match.fetched_at) metaParts.push(formatAge(match.fetched_at));
     if (match.found_by === 'name') metaParts.push('matched by name');
-    if (hasStages) metaParts.push(`${match.stages.length} stages`);
+    if (hasStages) {
+      const excludedCount = excludedStageCount(match);
+      metaParts.push(`${match.stages.length} stages` + (excludedCount ? ` · ${excludedCount} excluded` : ''));
+    }
     if (!isUSPSA) metaParts.push('excluded from charts');
 
     const typeBadgeClass = !isChartable(match)                    ? 'type-other'    // red  — non-USPSA/non-HF sport
@@ -1737,12 +1805,32 @@ function renderMatchList() {
       table.appendChild(thead);
 
       const tbody = document.createElement('tbody');
-      match.stages.forEach(s => {
+      match.stages.forEach((s, stageIndex) => {
         const clf = isClassifierStage(s);
         const tr = document.createElement('tr');
+        const key = stageKey(s, stageIndex);
+        const override = getStageOverride(match, s, stageIndex);
+        const included = override.included !== false;
+        const note = override.note || '';
+        if (!included) tr.classList.add('stage-excluded');
 
         // Stage name cell — use DOM to prevent XSS
         const nameTd = document.createElement('td');
+        const factorLabel = document.createElement('label');
+        factorLabel.className = 'stage-factor-toggle';
+        factorLabel.title = 'Include this stage in match performance, adjusted %, accuracy, and hit-zone aggregates';
+
+        const factorCb = document.createElement('input');
+        factorCb.type = 'checkbox';
+        factorCb.className = 'stage-factor-cb';
+        factorCb.checked = included;
+        factorCb.dataset.stageKey = key;
+        factorLabel.appendChild(factorCb);
+        factorLabel.appendChild(document.createTextNode('Factor'));
+        nameTd.appendChild(factorLabel);
+
+        const nameLine = document.createElement('div');
+        nameLine.className = 'stage-name-line';
         if (clf) {
           const badge = document.createElement('a');
           badge.className = 'classifier-badge';
@@ -1750,9 +1838,26 @@ function renderMatchList() {
           badge.target = '_blank';
           badge.title = `${clf.name ? clf.name + ' — ' : ''}CM ${clf.number} · View stage description`;
           badge.textContent = `CM ${clf.number}`;
-          nameTd.appendChild(badge);
+          nameLine.appendChild(badge);
         }
-        nameTd.appendChild(document.createTextNode(normalizeStgName(s.name)));
+        nameLine.appendChild(document.createTextNode(normalizeStgName(s.name)));
+        if (!included) {
+          const excludedBadge = document.createElement('span');
+          excludedBadge.className = 'stage-excluded-badge';
+          excludedBadge.textContent = 'Excluded';
+          nameLine.appendChild(excludedBadge);
+        }
+        nameTd.appendChild(nameLine);
+
+        const noteInput = document.createElement('input');
+        noteInput.type = 'text';
+        noteInput.className = 'stage-note-input';
+        noteInput.placeholder = 'Exclusion note (optional)';
+        noteInput.maxLength = 120;
+        noteInput.value = note;
+        noteInput.dataset.stageKey = key;
+        noteInput.title = 'Optional reason, e.g. gun broke';
+        nameTd.appendChild(noteInput);
         tr.appendChild(nameTd);
 
         // Numeric cells
@@ -1839,6 +1944,54 @@ function renderMatchList() {
       });
       table.appendChild(tbody);
       panel.appendChild(table);
+
+      const filterActions = document.createElement('div');
+      filterActions.className = 'stage-filter-actions';
+      const filterHint = document.createElement('span');
+      filterHint.className = 'stage-filter-hint';
+      filterHint.textContent = 'Unchecked stages stay visible here but are omitted from charts, ratings, adjusted %, and accuracy aggregates.';
+      const applyBtn = document.createElement('button');
+      applyBtn.className = 'stage-filter-apply';
+      applyBtn.textContent = 'Apply stage filters';
+      applyBtn.disabled = true;
+      const resetBtn = document.createElement('button');
+      resetBtn.className = 'stage-filter-reset';
+      resetBtn.textContent = 'Reset stages';
+      resetBtn.disabled = !stageOverrides[match.match_id];
+      filterActions.append(filterHint, applyBtn, resetBtn);
+      panel.appendChild(filterActions);
+
+      const markStageFiltersDirty = () => {
+        applyBtn.disabled = false;
+      };
+      panel.querySelectorAll('.stage-factor-cb, .stage-note-input').forEach(input => {
+        input.addEventListener('change', markStageFiltersDirty);
+        input.addEventListener('input', markStageFiltersDirty);
+      });
+      applyBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const noteInputs = new Map([...panel.querySelectorAll('.stage-note-input')]
+          .map(input => [input.dataset.stageKey, input.value.trim()]));
+        const nextOverrides = {};
+        panel.querySelectorAll('.stage-factor-cb').forEach(cb => {
+          const key = cb.dataset.stageKey;
+          const note = noteInputs.get(key) || '';
+          if (!cb.checked || note) nextOverrides[key] = { included: cb.checked, note };
+        });
+        setMatchStageOverrides(match.match_id, nextOverrides);
+        await saveStageOverrides();
+        renderAll();
+        renderMatchList();
+        updateStatusCounts();
+      });
+      resetBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        setMatchStageOverrides(match.match_id, {});
+        await saveStageOverrides();
+        renderAll();
+        renderMatchList();
+        updateStatusCounts();
+      });
 
       const toggleExpand = () => {
         const isOpen = panel.classList.toggle('open');
@@ -1966,6 +2119,7 @@ async function deleteMatch(match) {
 
   allResults = allResults.filter(r => r.match_id !== match.match_id);
   deselectedMatches.delete(match.match_id);
+  setMatchStageOverrides(match.match_id, {});
 
   const d = await chrome.storage.local.get(['matchCache', 'lastMatchList']);
   const cache     = d.matchCache     || {};
@@ -1977,6 +2131,7 @@ async function deleteMatch(match) {
     matchCache:        cache,
     lastMatchList:     newList,
     deselectedMatches: [...deselectedMatches],
+    stageOverrides,
   });
 
   renderAll();
@@ -2180,11 +2335,12 @@ function exportMatchCard(match) {
   const probe = document.createElement('canvas').getContext('2d');
   probe.font = `bold 13px ${F}`;
   const nameLines  = _wrapText(probe, match.match_name || '', W - PAD * 2);
-  const scorePct   = match.div_pct ?? match.overall_pct;
+  const scorePct   = effectiveDivPct(match) ?? effectiveOverallPct(match);
   const hasScore   = scorePct != null;
-  const showOverall = match.overall_pct != null && match.div_pct != null
-                     && Math.abs(match.overall_pct - match.div_pct) > 0.1;
-  const hasStages  = match.stages?.length > 0;
+  const showOverall = effectiveOverallPct(match) != null && effectiveDivPct(match) != null
+                     && Math.abs(effectiveOverallPct(match) - effectiveDivPct(match)) > 0.1;
+  const cardStages = getMetricStages(match);
+  const hasStages  = cardStages.length > 0;
 
   let H = PAD;
   H += nameLines.length * 16;
@@ -2194,7 +2350,7 @@ function exportMatchCard(match) {
     if (showOverall) H += 14;
     H += 8;
   }
-  if (hasStages) { H += 1 + 8 + match.stages.length * 20 + 6; }
+  if (hasStages) { H += 1 + 8 + cardStages.length * 20 + 6; }
   H += 1 + 8 + 14 + PAD;
 
   const canvas = document.createElement('canvas');
@@ -2231,11 +2387,11 @@ function exportMatchCard(match) {
     ctx.font = `bold 12px ${F}`; ctx.fillStyle = color;
     ctx.fillText(label, ox + PAD + pw + 6, y + 20);
     ctx.font = `9px ${F}`; ctx.fillStyle = '#555';
-    ctx.fillText(match.div_pct != null ? 'div %' : 'overall %', ox + PAD + pw + 6, y + 30);
+    ctx.fillText(hasExcludedStages(match) ? 'filtered %' : (match.div_pct != null ? 'div %' : 'overall %'), ox + PAD + pw + 6, y + 30);
     y += 30;
     if (showOverall) {
       ctx.font = `11px ${F}`; ctx.fillStyle = '#888';
-      ctx.fillText(`overall: ${match.overall_pct.toFixed(1)}%`, ox + PAD, y + 10);
+      ctx.fillText(`overall: ${effectiveOverallPct(match).toFixed(1)}%`, ox + PAD, y + 10);
       y += 14;
     }
     y += 8;
@@ -2246,7 +2402,7 @@ function exportMatchCard(match) {
     const pctX = ox + W - PAD;
     const hfX  = pctX - 52;
     const nameMaxW = hfX - 50 - (ox + PAD);
-    match.stages.forEach(s => {
+    cardStages.forEach(s => {
       const clf = isClassifierStage(s);
       const pct = clf && s.clf_pct != null ? s.clf_pct : s.pct;
       ctx.font = clf ? `bold 11px ${F}` : `11px ${F}`;
@@ -2386,8 +2542,8 @@ function exportStageCard(match, stage) {
 function exportChartCSV() {
   const uspsaBase = allResults.filter(r => isChartable(r) && !deselectedMatches.has(r.match_id));
   const chartable = currentView === 'ranked'
-    ? uspsaBase.filter(r => r.found_by === 'member_number' && r.overall_pct != null)
-    : uspsaBase.filter(r => r.overall_pct != null || r.hf != null);
+    ? uspsaBase.filter(r => r.found_by === 'member_number' && effectiveOverallPct(r) != null)
+    : uspsaBase.filter(r => effectiveOverallPct(r) != null || r.hf != null);
   const sorted = [...chartable].sort((a, b) => {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
@@ -2403,7 +2559,7 @@ function exportChartCSV() {
   const headers = [
     'Date', 'Match', 'Division', 'Class', 'Overall %', 'Div %', 'Place', 'Div Place',
     'Stage', 'Stage HF', 'Stage Match %', 'Stage Time', 'A', 'C', 'D', 'M', 'NS', 'P',
-    'CM #', 'CM Name', 'USPSA %',
+    'Stage Included', 'Stage Note', 'CM #', 'CM Name', 'USPSA %',
   ];
   const rows = [headers];
 
@@ -2413,20 +2569,22 @@ function exportChartCSV() {
       r.match_name  || '',
       r.division    || '',
       r.class_      || '',
-      r.overall_pct != null ? r.overall_pct.toFixed(2) : '',
-      r.div_pct     != null ? r.div_pct.toFixed(2)     : '',
+      effectiveOverallPct(r) != null ? effectiveOverallPct(r).toFixed(2) : '',
+      effectiveDivPct(r)     != null ? effectiveDivPct(r).toFixed(2)     : '',
       r.place       != null ? r.place                   : '',
       r.div_place   != null ? r.div_place               : '',
     ];
 
     if (!r.stages?.length) {
-      if (!classifiersOnly) rows.push([...matchCols, '', '', '', '', '', '', '', '', '', '', '', '']);
+      if (!classifiersOnly) rows.push([...matchCols, ...Array(headers.length - matchCols.length).fill('')]);
       continue;
     }
 
-    for (const s of r.stages) {
+    for (const [stageIndex, s] of r.stages.entries()) {
       const clf = isClassifierStage(s);
       if (classifiersOnly && !clf) continue;
+      const override = getStageOverride(r, s, stageIndex);
+      const included = override.included !== false;
       rows.push([
         ...matchCols,
         s.name  || '',
@@ -2435,6 +2593,8 @@ function exportChartCSV() {
         s.time  != null ? s.time.toFixed(2) : '',
         s.a  ?? '', s.c  ?? '', s.d  ?? '',
         s.m  ?? '', s.ns ?? '', s.p  ?? '',
+        included ? 'Yes' : 'No',
+        override.note || '',
         clf?.number || '',
         clf?.name   || '',
         s.clf_pct != null ? s.clf_pct.toFixed(2) : '',
