@@ -37,13 +37,9 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 
 **Division %** is your score relative to the top shooter in your division at that match. It tells you how you placed that day, but it only reflects who happened to show up in your division — if no GM competed in your division, even a mediocre performance can read as 90%+.
 
-**Adjusted %** is a field-strength correction for non-classifier stages, calculated in two steps:
+**Adjusted %** is a field-strength correction for non-classifier stages. For each stage, the extension takes the top hit factor from every represented division, translates each result to your division's equivalent using national HHF ratios from [hitfactor.info](https://hitfactor.info), and uses the strongest normalized result as the reference. Your own division participates without conversion, so the adjusted score remains between 0% and 100% while correcting for divisions with stronger competitors.
 
-1. **Own division first** — if a GM or Master competed in your division at that match, their median hit factor is used as the reference directly. No cross-division math needed; you're measured against the actual elite competition that was present.
-
-2. **Cross-division fallback** — if no GM or Master competed in your division, the extension finds the strongest competitor across all other divisions (GM median preferred, then Master, then top HF), translates their hit factor to your division's equivalent using national HHF ratios from [hitfactor.info](https://hitfactor.info), and uses that as the reference. This corrects for weak-field matches where winning your division by default would otherwise inflate the score.
-
-A 75% adjusted score means you performed at solid A-class level against the strongest competition at that match — whether they were in your division or another. Adjusted % is the better indicator of actual improvement over time because it accounts for who actually showed up, not just who showed up in your specific division. Classifier stages are excluded from adjusted % because official classifier percentages are already normalized against USPSA national division data.
+A 75% adjusted score means you performed at solid A-class level against the strongest actual stage result at that match after accounting for division equipment differences. Adjusted % is the better indicator of improvement over time because it accounts for the complete match field, not just your division draw. Classifier stages are excluded because official classifier percentages are already normalized against USPSA national division data.
 
 ---
 
