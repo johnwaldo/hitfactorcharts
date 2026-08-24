@@ -1281,8 +1281,8 @@
     <canvas id="chartTime" height="380"></canvas>
     <div class="chart-note">
       <strong>Division %</strong> is your score relative to the top shooter in your division at that match — it tells you how you placed, but it only reflects who happened to show up in your division that day.
-      <strong>Adjusted %</strong> is a field-strength correction: it finds the strongest competitor across <em>all</em> divisions at that match (GM median hit factor preferred, then Master, then top HF), translates their score to your division's equivalent using national HHF ratios from hitfactor.info, and measures you against that benchmark.
-      Adjusted % is the more meaningful number — a 75% adjusted score means you competed at solid A-class level against the actual talent at that match, regardless of whether any GM or Master was shooting your division.
+      <strong>Adjusted %</strong> is a field-strength correction: it takes the top stage hit factor from every division at that match, translates each result to your division's equivalent using national HHF ratios from hitfactor.info, and measures you against the strongest normalized result.
+      Adjusted % is the more meaningful number — a 75% adjusted score means you performed at solid A-class level against the strongest actual stage result at that match, regardless of division.
     </div>
     <div class="chart-summary" id="chartTimeSummary" style="display:none"></div>
     <div class="chart-summary chart-summary--adj" id="chartAdjSummary" style="display:none"></div>

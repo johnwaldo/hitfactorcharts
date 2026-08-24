@@ -258,21 +258,11 @@ function psDivToHfi(psDiv) {
 // are already normalized against USPSA national division data, so applying this
 // match-field adjustment would double-normalize them.
 //
-// Two-pass strategy:
-//   Pass 1 — own division first. If the shooter's division has a GM or M median
-//             HF on this stage, use it directly (factor = 1.0, no normalization
-//             error). This is the most accurate reference: an actual classified
-//             competitor in the shooter's division who was standing at the same
-//             match. Cross-division normalization should never override a real
-//             own-division benchmark — the national HHF factors are averages and
-//             will systematically inflate or deflate the reference when the actual
-//             GM present is above or below the national mean.
-//
-//   Pass 2 — cross-division fallback. Only used when the shooter's division has
-//             no GM or M class benchmark (i.e. no elite competitor was present).
-//             Finds the highest reference across other divisions and normalizes it
-//             to the shooter's division using DIVISION_FACTORS (hitfactor.info
-//             March 2025 national HHFs). This corrects for weak-field matches.
+// Compare the strongest actual stage result from every represented division.
+// Each top HF is translated to the shooter's division using DIVISION_FACTORS;
+// the shooter's own division participates at factor 1.0. Using the strongest
+// normalized result prevents a weak GM/M stage from inflating the percentage and
+// guarantees a natural 0–100 range because the own-division winner is eligible.
 //
 // Returns { adjPct, adjClass, refDiv, refClass, refHF, normHF, method } or null.
 function computeAdjustedPct(stage, shooterDiv) {
@@ -285,72 +275,37 @@ function computeAdjustedPct(stage, shooterDiv) {
   const benchmarks = stage.xdiv_benchmarks;
   if (!benchmarks) return null;
 
-  // ── Pass 1: own-division GM or M ─────────────────────────────────────────
-  // Find the benchmark entry whose division key matches the shooter's division.
-  for (const [psDiv, bench] of Object.entries(benchmarks)) {
-    if (psDivToHfi(psDiv) !== myDivKey) continue;
-    // Prefer GM median; fall back to M median.
-    const ref    = bench.gmMedian || bench.mMedian;
-    const cls    = bench.gmMedian ? 'GM' : 'M';
-    const method = bench.gmMedian ? 'gm_median' : 'm_median';
-    if (!ref || ref <= 0) break; // own division found but no GM/M — go to pass 2
-    const adjPct = (stage.hf / ref) * 100;
-    return {
-      adjPct:   Math.min(adjPct, 120),
-      adjClass: classLetterForPct(adjPct),
-      refDiv:   psDiv,
-      refClass: cls,
-      refHF:    ref,
-      normHF:   ref,
-      method,
-    };
-  }
-
-  // ── Pass 2: cross-division fallback ───────────────────────────────────────
-  // No GM or M in shooter's division. Estimate from other divisions using
-  // national HHF ratio factors. Takes the highest normalized reference found.
   let bestNormalizedRef = 0;
   let bestRefDiv = null;
   let bestRefClass = null;
   let bestRefHF = null;
-  let bestMethod = null;
 
   for (const [psDiv, bench] of Object.entries(benchmarks)) {
     const srcDivKey = psDivToHfi(psDiv);
-    if (!srcDivKey || srcDivKey === myDivKey) continue; // own div already checked
-    const factor = DIVISION_FACTORS[myDivKey]?.[srcDivKey];
+    if (!srcDivKey || !bench.topHF || bench.topHF <= 0) continue;
+    const factor = srcDivKey === myDivKey ? 1 : DIVISION_FACTORS[myDivKey]?.[srcDivKey];
     if (!factor) continue;
 
-    const candidates = [
-      { hf: bench.gmMedian, cls: 'GM', method: 'gm_median' },
-      { hf: bench.mMedian,  cls: 'M',  method: 'm_median'  },
-      { hf: bench.topHF,    cls: bench.topClass || '?', method: 'top_hf' },
-    ];
-
-    for (const cand of candidates) {
-      if (!cand.hf || cand.hf <= 0) continue;
-      const normalized = cand.hf * factor;
-      if (normalized > bestNormalizedRef) {
-        bestNormalizedRef = normalized;
-        bestRefDiv        = psDiv;
-        bestRefClass      = cand.cls;
-        bestRefHF         = cand.hf;
-        bestMethod        = cand.method;
-      }
+    const normalized = bench.topHF * factor;
+    if (normalized > bestNormalizedRef) {
+      bestNormalizedRef = normalized;
+      bestRefDiv        = psDiv;
+      bestRefClass      = bench.topClass || '?';
+      bestRefHF         = bench.topHF;
     }
   }
 
   if (bestNormalizedRef <= 0) return null;
 
-  const adjPct = (stage.hf / bestNormalizedRef) * 100;
+  const adjPct = Math.min((stage.hf / bestNormalizedRef) * 100, 100);
   return {
-    adjPct:   Math.min(adjPct, 120),
+    adjPct,
     adjClass: classLetterForPct(adjPct),
     refDiv:   bestRefDiv,
     refClass: bestRefClass,
     refHF:    bestRefHF,
     normHF:   bestNormalizedRef,
-    method:   bestMethod,
+    method:   'top_hf',
   };
 }
 
@@ -1893,8 +1848,7 @@ function renderMatchList() {
             const color = b ? b.text.replace('0.55', '1') : '#8a9bb0';
             adjTd.innerHTML = `<span style="color:${color}">${adj.adjPct.toFixed(1)}% <small style="font-size:9px;opacity:0.75">${adj.adjClass}</small></span>`;
             // Build detailed tooltip explaining the adjustment
-            const methodLabel = adj.method === 'gm_median' ? 'GM median' : adj.method === 'm_median' ? 'Master median' : 'top shooter';
-            adjTd.title = `Field-adjusted: your HF (${s.hf?.toFixed(4)}) vs ${methodLabel} in ${adj.refDiv} (${adj.refHF?.toFixed(4)} HF)\n`
+            adjTd.title = `Field-adjusted: your HF (${s.hf?.toFixed(4)}) vs top shooter in ${adj.refDiv} (${adj.refHF?.toFixed(4)} HF, ${adj.refClass || '?'} class)\n`
               + `Normalized to ${match.division}: ${adj.normHF?.toFixed(4)} HF\n`
               + `${s.hf?.toFixed(4)} / ${adj.normHF?.toFixed(4)} = ${adj.adjPct.toFixed(1)}% (${adj.adjClass} class)`;
           } else if (clf) {
@@ -2568,6 +2522,8 @@ function exportChartCSV() {
     'Date', 'Match', 'Division', 'Class', 'Overall %', 'Div %', 'Place', 'Div Place',
     'Stage', 'Stage HF', 'Stage Match %', 'Stage Time', 'A', 'C', 'D', 'M', 'NS', 'P',
     'Stage Included', 'Stage Note', 'CM #', 'CM Name', 'USPSA %',
+    'Adjusted %', 'Adjusted Ref Division', 'Adjusted Ref Class', 'Adjusted Ref HF',
+    'Adjusted Normalized HF', 'Adjusted Method',
   ];
   const rows = [headers];
 
@@ -2593,6 +2549,7 @@ function exportChartCSV() {
       if (classifiersOnly && !clf) continue;
       const override = getStageOverride(r, s, stageIndex);
       const included = override.included !== false;
+      const adj = computeAdjustedPct(s, r.division);
       rows.push([
         ...matchCols,
         s.name  || '',
@@ -2606,6 +2563,12 @@ function exportChartCSV() {
         clf?.number || '',
         clf?.name   || '',
         s.clf_pct != null ? s.clf_pct.toFixed(2) : '',
+        adj?.adjPct != null ? adj.adjPct.toFixed(2) : '',
+        adj?.refDiv || '',
+        adj?.refClass || '',
+        adj?.refHF != null ? adj.refHF.toFixed(4) : '',
+        adj?.normHF != null ? adj.normHF.toFixed(4) : '',
+        adj?.method || '',
       ]);
     }
   }
