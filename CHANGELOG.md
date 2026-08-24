@@ -4,6 +4,10 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+### Added
+
+- A persistent division selector before the USPSA member-number field now filters charts, statistics, classifier analysis, Match History, status counts, and CSV exports without re-fetching scores.
+
 ## v1.6.3 — 2026-08-24
 
 ### Fixed
