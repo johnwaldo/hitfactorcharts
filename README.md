@@ -2,6 +2,8 @@
 
 A Chrome extension that pulls your USPSA match results from PractiScore and displays them as interactive charts — score over time, placement, classifier tracking, and per-stage breakdowns — all inside your browser, with no server or API key required.
 
+**[How to install](#installation)**
+
 ![Hit Factor Charts](/screenshots/top.png?raw=true "Hit Factor Charts — Score Over Time")
 
 ![Hit Factor Charts — Analytics](/screenshots/bottom.png?raw=true "Hit Factor Charts — Full Analytics Suite")
@@ -25,7 +27,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 - **Filter matches** — checkboxes let you include or exclude individual matches from charts without deleting them
 - **Filter by year or custom date range** — year dropdown includes a "Custom Range…" option with from/to date pickers
 - **Export as image** — save any match or individual stage as a PNG card (floppy-disk button on each match row)
-- **Export as CSV** — download all chart-visible data as a flat CSV (one row per stage) including CM numbers, USPSA %, HF, and hit counts
+- **Export as CSV** — download all chart-visible data as a flat CSV (one row per stage) including CM numbers, USPSA %, HF, hit counts, adjusted %, and the selected reference division, class, HF, normalized HF, and benchmark method
 - **Light/dark theme** — defaults to light mode; toggle in the header; preference syncs across devices via Chrome storage
 - **Inter font** — bundled variable font for clean, consistent rendering at all weights
 - **Local caching** — match data is cached in browser storage; individual matches can be refreshed on demand
