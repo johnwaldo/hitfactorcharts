@@ -4,9 +4,14 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.6.3 — 2026-08-24
+
 ### Fixed
 
 - Adjusted % now uses the strongest division-normalized stage result instead of allowing a weak GM or Master stage median to inflate scores above 100%.
+
+### Added
+
 - CSV exports now include each stage's adjusted percentage and selected benchmark details for auditing.
 
 ## v1.6.2 — 2026-05-26
