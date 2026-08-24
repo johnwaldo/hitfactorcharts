@@ -6,7 +6,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 
 ![Hit Factor Charts — Analytics](/screenshots/bottom.png?raw=true "Hit Factor Charts — Full Analytics Suite")
 
-*Screenshots taken at v1.5.5. Current version is v1.6.2.*
+*Screenshots taken at v1.5.5. Current version is v1.6.3.*
 
 ---
 
@@ -16,7 +16,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 - **Placement chart** — finish position at each match, normalized to field size
 - **Per-stage breakdown** — expand any match row to see hits, HF, and percentage for every stage; classifier stages show official USPSA % (vs national reference HF) as the primary number; individual stages can be excluded from ratings with an optional note
 - **Division-aware** — automatically detects which division you shot in each match and shows division-specific results
-- **Field-strength adjusted %** — for non-classifier stages, finds the strongest competitor across all divisions at each match (GM median HF preferred, then Master, then top HF), translates their score to your division's scale using hitfactor.info HHF ratios, and measures you against that benchmark — a more reliable indicator of improvement than raw division % when your division draw varies
+- **Field-strength adjusted %** — for non-classifier stages, takes the top hit factor from every represented division, translates each result to your division's scale using hitfactor.info HHF ratios, and measures you against the strongest normalized benchmark — a more reliable indicator of improvement than raw division % when your division draw varies
 - **Chart summaries** — automatic plain-English insight below each chart: score trend (last 3 vs baseline), adjusted % context, placement percentile, and classifier trend using the national HHF reference
 - **Classifier tracking** — overlay of your classifier scores against your running average; identifies each CM by number and links to the USPSA stage description PDF
 - **Consistency card** — match-to-match score variance and accuracy loss metrics
