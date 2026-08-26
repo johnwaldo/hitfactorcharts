@@ -4,6 +4,8 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.6.5 — 2026-08-26
+
 ### Added
 
 - Six immediately visible graph range presets now cover the last month, three months, six months, one year, three years, and all time. Analytics default to six months while older cached matches remain available.
