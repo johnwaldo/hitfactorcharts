@@ -73,7 +73,8 @@
       flex-wrap: wrap;
       border-bottom: 1px solid #1e2130;
     }
-    .controls input {
+    .controls input,
+    .controls select {
       flex: 1;
       min-width: 160px;
       max-width: 260px;
@@ -86,7 +87,12 @@
       outline: none;
       transition: opacity 0.15s, border-color 0.15s;
     }
-    .controls input:focus  { border-color: #4a9eff; }
+    .controls select {
+      flex: 0 1 180px;
+      cursor: pointer;
+    }
+    .controls input:focus,
+    .controls select:focus { border-color: #4a9eff; }
     .controls input::placeholder { color: #5a6070; }
     .controls input:disabled {
       opacity: 0.45;
@@ -385,6 +391,13 @@
       text-transform: uppercase;
       letter-spacing: 0.8px;
       margin-bottom: 16px;
+    }
+    .match-empty {
+      padding: 18px;
+      border: 1px dashed #2a2d3a;
+      border-radius: 8px;
+      color: #777;
+      text-align: center;
     }
 
     .match-row {
@@ -1022,7 +1035,8 @@
     [data-theme="light"] #themeToggle { color: #4a5060; border-color: #c0c4cc; }
     [data-theme="light"] #themeToggle:hover { color: #1a1d27; border-color: #2563eb; }
     [data-theme="light"] .controls { border-bottom-color: #e0e2e8; }
-    [data-theme="light"] .controls input {
+    [data-theme="light"] .controls input,
+    [data-theme="light"] .controls select {
       background: #ffffff;
       border-color: #c0c4cc;
       color: #2c3040;
@@ -1086,6 +1100,7 @@
       background: #ffffff;
       border-color: #d0d4dc;
     }
+    [data-theme="light"] .match-empty { border-color: #c0c4cc; color: #5a6478; }
     [data-theme="light"] .match-row:hover { background: #f0f1f4; }
     [data-theme="light"] .match-name { color: #1a1d27; }
     [data-theme="light"] .match-meta { color: #5a6478; }
@@ -1150,6 +1165,18 @@
 </header>
 
 <div class="controls">
+  <select id="divisionFilter" aria-label="Filter progress by division" title="Filter progress by division">
+    <option value="">All Divisions</option>
+    <option value="co">Carry Optics</option>
+    <option value="lo">Limited Optics</option>
+    <option value="opn">Open</option>
+    <option value="prod">Production</option>
+    <option value="ltd">Limited</option>
+    <option value="l10">Limited 10</option>
+    <option value="pcc">PCC</option>
+    <option value="rev">Revolver</option>
+    <option value="ss">Single Stack</option>
+  </select>
   <input id="memberInput" type="text" placeholder="USPSA member # (e.g. A12345, optional)" />
   <input id="nameInput"   type="text" placeholder="Name (e.g. Smith, Jane)" />
   <button id="editBtn"   class="ctrl-btn">Edit</button>

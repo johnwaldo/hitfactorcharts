@@ -19,6 +19,7 @@ document.getElementById('headerVersion').textContent = 'v' + chrome.runtime.getM
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const memberInput  = document.getElementById('memberInput');
 const nameInput    = document.getElementById('nameInput');
+const divisionFilter = document.getElementById('divisionFilter');
 const fetchBtn     = document.getElementById('fetchBtn');
 const editBtn      = document.getElementById('editBtn');
 const saveBtn      = document.getElementById('saveBtn');
@@ -204,7 +205,7 @@ async function restoreFromSync() {
 let currentView      = 'ranked'; // 'ranked' | 'all'
 let deselectedMatches = new Set(); // match IDs manually excluded from charts
 let stageOverrides    = {};     // match_id -> stage key -> { included: false, note: string }
-let selectedDiv       = null;     // division filter for stats + charts (null = All)
+let selectedDiv       = null;     // canonical division key (null = All)
 let selectedYear      = null;     // year filter for charts (null = All Time)
 let selectedDateRange = null;    // custom range { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' } or null
 let classificationData = null;  // data from uspsa.org/classification/[memberNumber]
@@ -244,6 +245,12 @@ const PS_DIV_TO_HFI = {
   // Full names (from combined view)
   CARRYOPTICS: 'co', LIMITED: 'ltd', LIMITEDOPTICS: 'lo', OPEN: 'opn',
   PRODUCTION: 'prod', REVOLVER: 'rev', SINGLESTACK: 'ss',
+  LIMITED10: 'l10', PISTOLCALIBERCARBINE: 'pcc',
+};
+
+const DIVISION_LABELS = {
+  co: 'Carry Optics', lo: 'Limited Optics', opn: 'Open', prod: 'Production',
+  ltd: 'Limited', l10: 'Limited 10', pcc: 'PCC', rev: 'Revolver', ss: 'Single Stack',
 };
 
 // Convert a PractiScore division string to hitfactor.info key
@@ -251,6 +258,20 @@ function psDivToHfi(psDiv) {
   if (!psDiv) return null;
   const key = psDiv.trim().toUpperCase().replace(/[\s\-]+/g, '');
   return PS_DIV_TO_HFI[key] || key.toLowerCase();
+}
+
+function normalizeDivision(psDiv) {
+  const key = psDivToHfi(psDiv);
+  return key && DIVISION_LABELS[key] ? key : null;
+}
+
+function divisionLabel(psDiv) {
+  const key = normalizeDivision(psDiv);
+  return key ? DIVISION_LABELS[key] : (psDiv || 'Unknown');
+}
+
+function matchesSelectedDivision(match) {
+  return !selectedDiv || normalizeDivision(match?.division) === selectedDiv;
 }
 
 // Compute field-strength-adjusted stage percentage.
@@ -647,7 +668,7 @@ function hideOnboarding() {
 }
 
 // ── Restore persisted state on load ──────────────────────────────────────────
-chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData'], async d => {
+chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision'], async d => {
   // Try restoring from sync if local has no credentials (e.g. after reinstall)
   if (!d.memberNumber && !d.name) {
     await restoreFromSync();
@@ -661,6 +682,8 @@ chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache',
   if (d.name)         nameInput.value   = d.name;
   if (d.deselectedMatches) deselectedMatches = new Set(d.deselectedMatches);
   if (d.stageOverrides && typeof d.stageOverrides === 'object') stageOverrides = d.stageOverrides;
+  selectedDiv = normalizeDivision(d.selectedDivision);
+  divisionFilter.value = selectedDiv || '';
 
   // Lock inputs if we already have saved credentials
   if (d.memberNumber || d.name) {
@@ -687,14 +710,7 @@ chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache',
       if (!d.memberNumber) switchView('all');
       renderAll();
       renderMatchList();
-      const confirmedRestored  = restored.filter(r => isConfirmedUSPSA(r.match_type || 'Unknown'));
-      const unconfirmedRestored = restored.filter(r => isLikelyUSPSA(r.match_type || 'Unknown') && !isConfirmedUSPSA(r.match_type || 'Unknown'));
-      const nonUspsaRestored   = restored.filter(r => !isLikelyUSPSA(r.match_type || 'Unknown'));
-      const scored    = confirmedRestored.filter(r => r.overall_pct != null).length;
-      const uspsa     = confirmedRestored.length;
-      const unconfirmedNote = unconfirmedRestored.length > 0 ? ` · ${unconfirmedRestored.length} unconfirmed type` : '';
-      const skippedNote     = nonUspsaRestored.length > 0    ? ` · ${nonUspsaRestored.length} non-USPSA excluded` : '';
-      setStatus(`Showing cached data — ${scored}/${uspsa} USPSA matches scored.${unconfirmedNote}${skippedNote} Click Fetch Scores to check for new matches.`, 'success');
+      updateStatusCounts('Showing cached data:');
     }
   }
 });
@@ -729,6 +745,14 @@ document.getElementById('classifiersOnlyChk').addEventListener('change', e => {
 
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
   exportChartCSV();
+});
+
+divisionFilter.addEventListener('change', () => {
+  selectedDiv = normalizeDivision(divisionFilter.value);
+  chrome.storage.local.set({ selectedDivision: selectedDiv });
+  renderAll();
+  renderMatchList();
+  updateStatusCounts();
 });
 
 // ── Fetch button ──────────────────────────────────────────────────────────────
@@ -937,7 +961,8 @@ function renderAll() {
     ? uspsaBase.filter(r => r.found_by === 'member_number' && effectiveOverallPct(r) != null)
     : uspsaBase.filter(r => effectiveOverallPct(r) != null || r.hf != null);
 
-  const sorted = [...chartable].sort((a, b) => {
+  const divs = [...new Set(chartable.map(r => normalizeDivision(r.division)).filter(Boolean))];
+  const sorted = chartable.filter(matchesSelectedDivision).sort((a, b) => {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
   });
@@ -950,31 +975,70 @@ function renderAll() {
   document.getElementById('classifiersToggleWrap').style.display = currentView === 'ranked' ? 'flex' : 'none';
 
   if (sorted.length === 0) {
-    const msg = currentView === 'ranked'
+    const msg = selectedDiv
+      ? `No ${divisionLabel(selectedDiv)} matches found in the current view.`
+      : currentView === 'ranked'
       ? 'No member-number confirmed scores.\nSwitch to "All Matches" to see name-matched results.'
       : 'No data.';
     drawMessage(document.getElementById('chartTime'),  msg);
     drawMessage(document.getElementById('chartPlace'), msg);
-    document.getElementById('statMatches').textContent = '—';
+    document.getElementById('statMatches').textContent = '0';
     document.getElementById('statAvg').textContent     = '—';
     document.getElementById('statBest').textContent    = '—';
-    document.getElementById('statDiv').textContent     = '—';
+    document.getElementById('statDiv').textContent     = selectedDiv ? divisionLabel(selectedDiv) : '—';
+    document.getElementById('statConsistencyBox').style.display = 'none';
+    document.getElementById('statAdjAvgBox').style.display = 'none';
+    document.getElementById('chartTimeTitle').textContent = classifiersOnly
+      ? 'Classifier Scores Over Time'
+      : 'Score Over Time';
+    document.getElementById('chartPlaceSubtitle').textContent = '';
+    setPlacementVisible(!classifiersOnly);
+    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    renderClassBox(selectedDiv);
+    renderYearFilter([]);
     return;
   }
 
-  const divs = [...new Set(sorted.map(r => r.division).filter(Boolean))];
-
-  // Validate selectedDiv / selectedYear against current data
-  if (selectedDiv && !divs.includes(selectedDiv)) selectedDiv = null;
+  // Validate the time filter against the active division without changing division preference.
   const years = [...new Set(sorted.map(r => r.date?.slice(0, 4)).filter(Boolean))].sort();
   if (selectedYear && !years.includes(selectedYear)) selectedYear = null;
 
-  // Filter to selected division + year/range for stats + charts
+  // Filter to selected year/range for stats + charts. Division is applied above.
   const viewSorted = sorted.filter(r =>
-    (!selectedDiv       || (r.division || 'Unknown') === selectedDiv) &&
     (!selectedYear      || r.date?.startsWith(selectedYear)) &&
     (!selectedDateRange || (r.date >= selectedDateRange.start && r.date <= selectedDateRange.end))
   );
+
+  if (viewSorted.length === 0) {
+    const msg = selectedDiv
+      ? `No ${divisionLabel(selectedDiv)} matches found in the selected date range.`
+      : 'No matches found in the selected date range.';
+    drawMessage(document.getElementById('chartTime'), msg);
+    drawMessage(document.getElementById('chartPlace'), msg);
+    document.getElementById('statMatches').textContent = '0';
+    document.getElementById('statAvg').textContent = '—';
+    document.getElementById('statBest').textContent = '—';
+    document.getElementById('statDiv').textContent = selectedDiv
+      ? divisionLabel(selectedDiv)
+      : (divs.length === 1 ? divisionLabel(divs[0]) : 'All');
+    document.getElementById('statConsistencyBox').style.display = 'none';
+    document.getElementById('statAdjAvgBox').style.display = 'none';
+    document.getElementById('chartTimeTitle').textContent = classifiersOnly
+      ? 'Classifier Scores Over Time'
+      : 'Score Over Time';
+    document.getElementById('chartPlaceSubtitle').textContent = '';
+    setPlacementVisible(!classifiersOnly);
+    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    renderClassBox(selectedDiv);
+    renderYearFilter(years);
+    return;
+  }
 
   const overallPcts = viewSorted.map(r => effectiveOverallPct(r)).filter(v => v != null);
   const avg  = overallPcts.length ? _avg(overallPcts) : 0;
@@ -990,7 +1054,7 @@ function renderAll() {
   document.getElementById('statBest').style.color    = bestBand?.text.replace('0.55','1') || '#4a9eff';
 
   // Stat box tooltips — explain what each metric measures
-  const divLabel = selectedDiv ? ` in ${selectedDiv}` : '';
+  const divLabel = selectedDiv ? ` in ${divisionLabel(selectedDiv)}` : '';
   const filteredStageTotal = viewSorted.reduce((sum, r) => sum + excludedStageCount(r), 0);
   const filteredStageTip = filteredStageTotal
     ? `\n${filteredStageTotal} excluded stage${filteredStageTotal > 1 ? 's are' : ' is'} omitted; filtered match scores use the average included stage %.`
@@ -1059,49 +1123,18 @@ function renderAll() {
     adjAvgBox.style.display = 'none';
   }
 
-  // Division stat box — opens a dropdown
+  // Division stat box mirrors the primary filter and is intentionally display-only.
   const divStatBox = document.getElementById('statDiv').closest('.stat-box');
   const divStatVal = document.getElementById('statDiv');
-  // Tooltip on the label — explains the card and the click-to-filter behaviour
   const divLblEl = divStatBox.querySelector('.lbl');
-  if (divLblEl) {
-    const divTipLines = divs.length > 1
-      ? `The division(s) detected in your match history.\nClick to filter all charts and stats to a single division.`
-      : `The division you shot in your match history.\nAll charts and stats reflect this division.`;
-    divLblEl.title = divTipLines;
-  }
+  divStatBox.classList.remove('clickable', 'active-filter');
+  divStatBox.onclick = null;
+  if (divLblEl) divLblEl.title = 'Use the division selector above to filter all progress data.';
   if (divs.length > 0) {
-    divStatBox.classList.add('clickable');
-    divStatBox.classList.toggle('active-filter', !!selectedDiv);
-    divStatVal.textContent = selectedDiv || (divs.length === 1 ? divs[0] : 'All');
-    divStatBox.onclick = (e) => {
-      e.stopPropagation();
-      const existing = divStatBox.querySelector('.div-dropdown');
-      if (existing) { existing.remove(); return; }
-      const dropdown = document.createElement('div');
-      dropdown.className = 'div-dropdown';
-      const options = divs.length > 1 ? ['All', ...divs] : divs;
-      options.forEach(d => {
-        const item = document.createElement('div');
-        item.className = 'div-dropdown-item' + ((d === 'All' && !selectedDiv) || d === selectedDiv ? ' selected' : '');
-        item.textContent = d;
-        item.onclick = (ev) => {
-          ev.stopPropagation();
-          selectedDiv = d === 'All' ? null : d;
-          dropdown.remove();
-          renderAll();
-        };
-        dropdown.appendChild(item);
-      });
-      divStatBox.appendChild(dropdown);
-      setTimeout(() => document.addEventListener('click', function close() {
-        dropdown.remove();
-        document.removeEventListener('click', close);
-      }, { once: true }), 0);
-    };
+    divStatVal.textContent = selectedDiv
+      ? divisionLabel(selectedDiv)
+      : (divs.length === 1 ? divisionLabel(divs[0]) : 'All');
   } else {
-    divStatBox.classList.remove('clickable', 'active-filter');
-    divStatBox.onclick = null;
     divStatVal.textContent = '—';
   }
 
@@ -1109,7 +1142,7 @@ function renderAll() {
   renderYearFilter(years);
 
   // Official classification stat box (D-GM class from USPSA.org)
-  renderClassBox(selectedDiv || (divs.length === 1 ? divs[0] : null));
+  renderClassBox(selectedDiv || (divs.length === 1 ? normalizeDivision(divs[0]) : null));
 
   const avgLbl = document.querySelector('#statMatches')?.closest('#stats')
     ?.querySelectorAll('.stat-box')[1]?.querySelector('.lbl');
@@ -1135,7 +1168,7 @@ function renderAll() {
           hf: s.hf,
           label: clf.number ? `CM ${clf.number}${clf.name ? ' · ' + clf.name : ''}` : 'Classifier',
           match_name: r.match_name,
-          division: r.division || 'Unknown',
+          division: divisionLabel(r.division),
           code: clf.number,
           a: s.a, c: s.c, d: s.d, m: s.m, ns: s.ns, p: s.p,
         });
@@ -1144,6 +1177,13 @@ function renderAll() {
 
     // Sort chronologically
     clfPoints.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    // Classifier-only mode never displays the normal analysis charts.
+    ['chartNonClfSection','chartClfOverlaySection','chartAccuracySection','chartHitZoneSection']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    document.getElementById('chartPlaceSubtitle').textContent = '';
 
     if (clfPoints.length === 0) {
       document.getElementById('statMatches').textContent = '0';
@@ -1202,9 +1242,6 @@ function renderAll() {
       showClassBands: true,
     });
     setPlacementVisible(false);
-    // Hide analysis charts in classifiers-only mode
-    ['chartNonClfSection','chartClfOverlaySection','chartAccuracySection','chartHitZoneSection']
-      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     return;
   }
 
@@ -1218,7 +1255,7 @@ function renderAll() {
   // Group viewSorted results by division
   const byDiv = {};
   viewSorted.forEach(r => {
-    const key = r.division || 'Unknown';
+    const key = divisionLabel(r.division);
     if (!byDiv[key]) byDiv[key] = [];
     byDiv[key].push(r);
   });
@@ -1636,10 +1673,18 @@ function renderMatchList() {
   matchHistory.classList.add('visible');
   matchRowsEl.innerHTML = '';
 
-  const sorted = [...allResults].sort((a, b) => {
+  const sorted = allResults.filter(matchesSelectedDivision).sort((a, b) => {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? db - da : 0;
   });
+
+  if (!sorted.length) {
+    const empty = document.createElement('div');
+    empty.className = 'match-empty';
+    empty.textContent = `No ${divisionLabel(selectedDiv)} matches found.`;
+    matchRowsEl.appendChild(empty);
+    return;
+  }
 
   sorted.forEach(match => {
     const hasStages  = !!(match.stages && match.stages.length > 0);
@@ -2028,16 +2073,17 @@ function renderClassBox(viewSortedDivision) {
   if (!classificationData?.divisions) { box.style.display = 'none'; return; }
 
   const divs = classificationData.divisions;
-  // Use the selected division key, or try to match by substring, or first available
+  // Match official division names to the canonical key used by the primary filter.
   let info = null;
+  let matchedKey = null;
   if (viewSortedDivision) {
-    const key = Object.keys(divs).find(k =>
-      k.toLowerCase().includes(viewSortedDivision.toLowerCase().slice(0, 4)) ||
-      viewSortedDivision.toLowerCase().includes(k.toLowerCase().slice(0, 4))
-    );
-    if (key) info = divs[key];
+    matchedKey = Object.keys(divs).find(k => normalizeDivision(k) === normalizeDivision(viewSortedDivision));
+    if (matchedKey) info = divs[matchedKey];
   }
-  if (!info) info = Object.values(divs)[0];
+  if (!info && !viewSortedDivision) {
+    matchedKey = Object.keys(divs)[0];
+    info = matchedKey ? divs[matchedKey] : null;
+  }
   if (!info?.class_) { box.style.display = 'none'; return; }
 
   const c = info.class_.toUpperCase();
@@ -2055,10 +2101,7 @@ function renderClassBox(viewSortedDivision) {
   `;
 
   // Tooltip — explain what the class and % mean
-  const divName = Object.keys(classificationData.divisions).find(k =>
-    k.toLowerCase().includes((viewSortedDivision || '').toLowerCase().slice(0, 4)) ||
-    (viewSortedDivision || '').toLowerCase().includes(k.toLowerCase().slice(0, 4))
-  ) || viewSortedDivision || 'your division';
+  const divName = matchedKey || divisionLabel(viewSortedDivision) || 'your division';
   const tipPctLine = info.pct != null
     ? `${info.pct.toFixed(1)}% — your current classifier average.\n`
     : '';
@@ -2105,9 +2148,7 @@ async function deleteMatch(match) {
     matchHistory.classList.remove('visible');
     setStatus('No matches. Click Fetch Scores to load.', '');
   } else {
-    const uspsaLeft = allResults.filter(r => isLikelyUSPSA(r.match_type || 'Unknown'));
-    const scored = uspsaLeft.filter(r => r.overall_pct != null).length;
-    setStatus(`${uspsaLeft.length} USPSA match(es) — ${scored} with scores.`, 'success');
+    updateStatusCounts();
   }
 }
 
@@ -2133,6 +2174,7 @@ async function refreshSingleMatch(match, btn) {
 
     renderAll();
     renderMatchList();
+    updateStatusCounts();
 
   } catch (err) {
     console.error('Refresh failed:', err);
@@ -2151,18 +2193,20 @@ function setStatus(msg, type = '', loading = false) {
 // verb = 'Loaded' on first fetch, omitted (defaults to 'Showing') on checkbox changes.
 function updateStatusCounts(verb) {
   if (!allResults.length) return;
-  const confirmedUSPSA  = allResults.filter(r => isConfirmedUSPSA(r.match_type || 'Unknown'));
-  const unconfirmed     = allResults.filter(r => isLikelyUSPSA(r.match_type || 'Unknown') && !isConfirmedUSPSA(r.match_type || 'Unknown'));
-  const nonUspsa        = allResults.filter(r => !isLikelyUSPSA(r.match_type || 'Unknown'));
+  const visibleResults  = allResults.filter(matchesSelectedDivision);
+  const confirmedUSPSA  = visibleResults.filter(r => isConfirmedUSPSA(r.match_type || 'Unknown'));
+  const unconfirmed     = visibleResults.filter(r => isLikelyUSPSA(r.match_type || 'Unknown') && !isConfirmedUSPSA(r.match_type || 'Unknown'));
+  const nonUspsa        = visibleResults.filter(r => !isLikelyUSPSA(r.match_type || 'Unknown'));
   const uspsa           = confirmedUSPSA.length;
   const scored          = confirmedUSPSA.filter(r => r.overall_pct != null).length;
   const checked         = confirmedUSPSA.filter(r => !deselectedMatches.has(r.match_id)).length;
 
   const prefix           = verb || 'Showing';
+  const divisionNote     = selectedDiv ? ` ${divisionLabel(selectedDiv)}` : '';
   const checkedNote      = checked < uspsa ? ` · ${checked} checked` : '';
   const unconfirmedNote  = unconfirmed.length > 0 ? ` · ${unconfirmed.length} unconfirmed type` : '';
   const skippedNote      = nonUspsa.length > 0    ? ` · ${nonUspsa.length} non-USPSA excluded` : '';
-  setStatus(`${prefix} ${uspsa} USPSA match(es) — ${scored} with scores${checkedNote}.${unconfirmedNote}${skippedNote}`, 'success');
+  setStatus(`${prefix}${divisionNote} ${uspsa} USPSA match(es) — ${scored} with scores${checkedNote}.${unconfirmedNote}${skippedNote}`, 'success');
 }
 
 // ── Save icon SVG (floppy disk, feather-style) ────────────────────────────────
@@ -2506,12 +2550,11 @@ function exportChartCSV() {
   const chartable = currentView === 'ranked'
     ? uspsaBase.filter(r => r.found_by === 'member_number' && effectiveOverallPct(r) != null)
     : uspsaBase.filter(r => effectiveOverallPct(r) != null || r.hf != null);
-  const sorted = [...chartable].sort((a, b) => {
+  const sorted = chartable.filter(matchesSelectedDivision).sort((a, b) => {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
   });
   const viewSorted = sorted.filter(r =>
-    (!selectedDiv       || (r.division || 'Unknown') === selectedDiv) &&
     (!selectedYear      || r.date?.startsWith(selectedYear)) &&
     (!selectedDateRange || (r.date >= selectedDateRange.start && r.date <= selectedDateRange.end))
   );
@@ -2577,7 +2620,8 @@ function exportChartCSV() {
   const dateTag  = selectedDateRange
     ? `${selectedDateRange.start} to ${selectedDateRange.end}`
     : selectedYear || 'all time';
-  const filename = (classifiersOnly ? 'hfc_classifiers' : 'hfc_scores') + ` ${dateTag}.csv`;
+  const divisionTag = selectedDiv ? ` ${divisionLabel(selectedDiv)}` : '';
+  const filename = (classifiersOnly ? 'hfc_classifiers' : 'hfc_scores') + `${divisionTag} ${dateTag}.csv`;
   const blob     = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url      = URL.createObjectURL(blob);
   const a        = document.createElement('a');

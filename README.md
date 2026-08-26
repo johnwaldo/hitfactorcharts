@@ -8,7 +8,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 
 ![Hit Factor Charts — Analytics](/screenshots/bottom.png?raw=true "Hit Factor Charts — Full Analytics Suite")
 
-*Screenshots taken at v1.5.5. Current version is v1.6.3.*
+*Screenshots taken at v1.5.5. Current version is v1.6.4.*
 
 ---
 
@@ -17,7 +17,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 - **Score over time** — match percentage plotted chronologically with USPSA classification bands (GM / M / A / B / C / D); Y-axis warped so higher classes get proportional visual space
 - **Placement chart** — finish position at each match, normalized to field size
 - **Per-stage breakdown** — expand any match row to see hits, HF, and percentage for every stage; classifier stages show official USPSA % (vs national reference HF) as the primary number; individual stages can be excluded from ratings with an optional note
-- **Division-aware** — automatically detects which division you shot in each match and shows division-specific results
+- **Division-aware filtering** — automatically detects which division you shot in each match; a persistent selector filters every chart, statistic, classification, history row, and CSV export to one division
 - **Field-strength adjusted %** — for non-classifier stages, takes the top hit factor from every represented division, translates each result to your division's scale using hitfactor.info HHF ratios, and measures you against the strongest normalized benchmark — a more reliable indicator of improvement than raw division % when your division draw varies
 - **Chart summaries** — automatic plain-English insight below each chart: score trend (last 3 vs baseline), adjusted % context, placement percentile, and classifier trend using the national HHF reference
 - **Classifier tracking** — overlay of your classifier scores against your running average; identifies each CM by number and links to the USPSA stage description PDF
@@ -101,6 +101,10 @@ The Hit Factor Charts icon will appear in your Chrome toolbar. Pin it for easy a
 4. **Click Fetch Scores** — the extension navigates to your PractiScore history, opens each match's results page, selects your division, and records your score. Progress is shown in the status bar.
 
 5. **Explore your data** — the summary bar shows matches found, average %, best %, field-strength adjusted average, and your USPSA classification. The **Scored Matches / All Matches** toggle below the cards switches between member-number lookup results and all name-matched results.
+
+### Filtering by division
+
+Use the **All Divisions** dropdown before the USPSA member-number field to focus the complete dashboard on Carry Optics, Limited Optics, Open, Production, or another USPSA division. The filter applies immediately to charts, statistics, classifier analysis, Match History, status counts, and CSV exports. It is saved locally and does not re-fetch or delete scores from other divisions.
 
 ### Reading the chart summaries
 
