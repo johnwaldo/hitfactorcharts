@@ -43,6 +43,9 @@ const chartsEl     = document.getElementById('charts');
 const debugLogEl   = document.getElementById('debugLog');
 const matchHistory = document.getElementById('matchHistory');
 const matchRowsEl  = document.getElementById('matchRows');
+const masterCalendar = document.getElementById('masterCalendar');
+const calendarMonthsEl = document.getElementById('calendarMonths');
+const calendarStatusEl = document.getElementById('calendarStatus');
 const tooltipEl    = document.getElementById('tooltip');
 
 // ── Update check ─────────────────────────────────────────────────────────────
@@ -915,6 +918,147 @@ function filterByActiveDateRange(records, referenceDate = new Date()) {
   });
 }
 
+function calendarMonthStarts(referenceDate = new Date()) {
+  const currentMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+  return Array.from({ length: 6 }, (_, index) =>
+    new Date(currentMonth.getFullYear(), currentMonth.getMonth() - (5 - index), 1)
+  );
+}
+
+function calendarWindow(records, referenceDate = new Date()) {
+  const months = calendarMonthStarts(referenceDate);
+  const start = localDateOnly(months[0]);
+  const end = localDateOnly(referenceDate);
+  const matchesByDate = new Map();
+  let invalidDateCount = 0;
+
+  for (const match of records) {
+    const date = normalizeDateOnly(match.date);
+    if (!date) {
+      invalidDateCount++;
+      continue;
+    }
+    if (date < start || date > end) continue;
+    if (!matchesByDate.has(date)) matchesByDate.set(date, []);
+    matchesByDate.get(date).push(match);
+  }
+
+  return { months, start, end, matchesByDate, invalidDateCount };
+}
+
+function focusMatchHistory(matchId) {
+  const row = [...document.querySelectorAll('.match-row')]
+    .find(candidate => candidate.dataset.matchId === String(matchId));
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.focus({ preventScroll: true });
+  row.classList.add('calendar-target');
+  window.setTimeout(() => row.classList.remove('calendar-target'), 1800);
+}
+
+function renderMasterCalendar(records, referenceDate = new Date()) {
+  masterCalendar.classList.add('visible');
+  calendarMonthsEl.innerHTML = '';
+
+  const { months, end, matchesByDate, invalidDateCount } = calendarWindow(records, referenceDate);
+
+  const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+  const dateFormatter = new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  let visibleCount = 0;
+
+  for (const monthStart of months) {
+    const year = monthStart.getFullYear();
+    const month = monthStart.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const block = document.createElement('section');
+    block.className = 'calendar-month';
+    block.setAttribute('aria-label', monthFormatter.format(monthStart));
+
+    const heading = document.createElement('h3');
+    heading.textContent = monthFormatter.format(monthStart);
+    block.appendChild(heading);
+
+    const weekdayRow = document.createElement('div');
+    weekdayRow.className = 'calendar-weekdays';
+    weekdayRow.setAttribute('aria-hidden', 'true');
+    for (const weekday of weekdays) {
+      const label = document.createElement('span');
+      label.textContent = weekday;
+      weekdayRow.appendChild(label);
+    }
+    block.appendChild(weekdayRow);
+
+    const days = document.createElement('div');
+    days.className = 'calendar-days';
+    for (let blank = 0; blank < monthStart.getDay(); blank++) {
+      const spacer = document.createElement('div');
+      spacer.className = 'calendar-day empty';
+      spacer.setAttribute('aria-hidden', 'true');
+      days.appendChild(spacer);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateObject = new Date(year, month, day);
+      const date = localDateOnly(dateObject);
+      const cell = document.createElement('div');
+      cell.className = 'calendar-day' + (date === end ? ' today' : '');
+
+      const dayNumber = document.createElement('span');
+      dayNumber.className = 'calendar-day-number';
+      dayNumber.textContent = String(day);
+      cell.appendChild(dayNumber);
+
+      for (const match of matchesByDate.get(date) || []) {
+        visibleCount++;
+        const name = match.match_name || 'Untitled match';
+        const division = divisionLabel(match.division);
+        const score = effectiveOverallPct(match);
+        const scoreText = score != null ? `${score.toFixed(1)}%` : 'No score';
+
+        const entry = document.createElement('button');
+        entry.type = 'button';
+        entry.className = 'calendar-entry';
+        entry.setAttribute('aria-label', `View ${name} in Match History — ${dateFormatter.format(dateObject)}, ${division}, ${scoreText}`);
+        entry.addEventListener('click', () => focusMatchHistory(match.match_id));
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'calendar-entry-name';
+        nameEl.textContent = name;
+        entry.appendChild(nameEl);
+
+        const metaEl = document.createElement('span');
+        metaEl.className = 'calendar-entry-meta';
+        metaEl.textContent = `${division} · ${scoreText}`;
+        entry.appendChild(metaEl);
+        cell.appendChild(entry);
+      }
+
+      days.appendChild(cell);
+    }
+
+    const renderedCellCount = monthStart.getDay() + daysInMonth;
+    for (let blank = renderedCellCount; blank % 7 !== 0; blank++) {
+      const spacer = document.createElement('div');
+      spacer.className = 'calendar-day empty';
+      spacer.setAttribute('aria-hidden', 'true');
+      days.appendChild(spacer);
+    }
+
+    block.appendChild(days);
+    calendarMonthsEl.appendChild(block);
+  }
+
+  const rangeLabel = `${monthFormatter.format(months[0])}–${monthFormatter.format(months[5])}`;
+  const matchLabel = visibleCount
+    ? `${visibleCount} match${visibleCount === 1 ? '' : 'es'} · ${rangeLabel}`
+    : `No chartable matches · ${rangeLabel}`;
+  const invalidLabel = invalidDateCount
+    ? ` · ${invalidDateCount} record${invalidDateCount === 1 ? '' : 's'} without a valid date omitted`
+    : '';
+  calendarStatusEl.textContent = matchLabel + invalidLabel;
+}
+
 function renderDateRangeFilter() {
   document.querySelectorAll('[data-date-preset]').forEach(button => {
     const active = button.dataset.datePreset === selectedDatePreset;
@@ -947,7 +1091,10 @@ function setPlacementVisible(visible) {
 
 function renderAll() {
   renderDateRangeFilter();
-  if (!allResults.length) return;
+  if (!allResults.length) {
+    masterCalendar.classList.remove('visible');
+    return;
+  }
 
   // Level 2 filter: only chart USPSA/Hit Factor matches (excludes time-scored sports)
   // Also exclude matches the user has manually deselected
@@ -967,6 +1114,7 @@ function renderAll() {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
   });
+  renderMasterCalendar(sorted);
 
   summaryBar.classList.add('visible');
   chartsEl.classList.add('visible');
@@ -1724,6 +1872,7 @@ function renderMatchList() {
     const row = document.createElement('div');
     row.className = 'match-row';
     row.dataset.matchId = match.match_id;
+    row.tabIndex = -1;
     // Build row using DOM methods for untrusted text (match_name, matchType) to prevent XSS (F1)
     row.innerHTML = `
       <input type="checkbox" class="match-include-cb" title="Include in charts"
