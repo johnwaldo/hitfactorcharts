@@ -19,3 +19,10 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Do not rely on hover for required actions or information.
 - Keep motion restrained in this analytical interface; resizing and filtering should feel immediate rather than animated.
 - Verify layout changes in both themes at approximately 375px, 1920px, and 2560px viewport widths.
+
+## Analytics date range
+
+- Keep all six presets immediately visible above the charts in this order: **Last 1 month**, **3 mo**, **6 mo**, **1 yr**, **3 yr**, and **all time**.
+- Activate **6 mo** on every dashboard load. Exactly one preset must expose a visible active state and `aria-pressed="true"`.
+- Use compact native buttons with a clear keyboard focus ring. The group wraps at narrow widths rather than becoming a dropdown or creating horizontal page overflow.
+- Date-range changes update the existing cached analytics immediately. They do not hide or delete older Match History records.
