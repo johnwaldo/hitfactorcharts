@@ -21,6 +21,13 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Keep motion restrained in this analytical interface; resizing and filtering should feel immediate rather than animated.
 - Verify layout changes in both themes at approximately 375px, 1920px, and 2560px viewport widths.
 
+## Chart language and axes
+
+- Trend summaries must state their comparison and use percentage-point units. When labelled **Stable**, show the metric-specific threshold in visible supporting text.
+- Date ticks use measured text width and a minimum 10px gap. Keep the final date only when it does not collide with the preceding retained label.
+- Suppress duplicate date labels while preserving distinct same-day data points and tooltips.
+- Axis labels must remain inside the canvas and readable in both themes at narrow, desktop, and wide widths.
+
 ## Analytics date range
 
 - Keep all six presets immediately visible above the charts in this order: **Last 1 month**, **3 mo**, **6 mo**, **1 yr**, **3 yr**, and **all time**.
