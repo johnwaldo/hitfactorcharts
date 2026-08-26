@@ -961,7 +961,7 @@ function renderAll() {
     ? uspsaBase.filter(r => r.found_by === 'member_number' && effectiveOverallPct(r) != null)
     : uspsaBase.filter(r => effectiveOverallPct(r) != null || r.hf != null);
 
-  const divs = [...new Set(chartable.map(r => r.division).filter(Boolean))];
+  const divs = [...new Set(chartable.map(r => normalizeDivision(r.division)).filter(Boolean))];
   const sorted = chartable.filter(matchesSelectedDivision).sort((a, b) => {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
@@ -1008,6 +1008,24 @@ function renderAll() {
     (!selectedYear      || r.date?.startsWith(selectedYear)) &&
     (!selectedDateRange || (r.date >= selectedDateRange.start && r.date <= selectedDateRange.end))
   );
+
+  if (viewSorted.length === 0) {
+    const msg = selectedDiv
+      ? `No ${divisionLabel(selectedDiv)} matches found in the selected date range.`
+      : 'No matches found in the selected date range.';
+    drawMessage(document.getElementById('chartTime'), msg);
+    drawMessage(document.getElementById('chartPlace'), msg);
+    document.getElementById('statMatches').textContent = '0';
+    document.getElementById('statAvg').textContent = '—';
+    document.getElementById('statBest').textContent = '—';
+    document.getElementById('statConsistencyBox').style.display = 'none';
+    document.getElementById('statAdjAvgBox').style.display = 'none';
+    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    renderClassBox(selectedDiv);
+    renderYearFilter(years);
+    return;
+  }
 
   const overallPcts = viewSorted.map(r => effectiveOverallPct(r)).filter(v => v != null);
   const avg  = overallPcts.length ? _avg(overallPcts) : 0;
@@ -1137,7 +1155,7 @@ function renderAll() {
           hf: s.hf,
           label: clf.number ? `CM ${clf.number}${clf.name ? ' · ' + clf.name : ''}` : 'Classifier',
           match_name: r.match_name,
-          division: r.division || 'Unknown',
+          division: divisionLabel(r.division),
           code: clf.number,
           a: s.a, c: s.c, d: s.d, m: s.m, ns: s.ns, p: s.p,
         });
@@ -1146,6 +1164,10 @@ function renderAll() {
 
     // Sort chronologically
     clfPoints.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    // Classifier-only mode never displays the normal analysis charts.
+    ['chartNonClfSection','chartClfOverlaySection','chartAccuracySection','chartHitZoneSection']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
 
     if (clfPoints.length === 0) {
       document.getElementById('statMatches').textContent = '0';
@@ -1204,9 +1226,6 @@ function renderAll() {
       showClassBands: true,
     });
     setPlacementVisible(false);
-    // Hide analysis charts in classifiers-only mode
-    ['chartNonClfSection','chartClfOverlaySection','chartAccuracySection','chartHitZoneSection']
-      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     return;
   }
 
@@ -1220,7 +1239,7 @@ function renderAll() {
   // Group viewSorted results by division
   const byDiv = {};
   viewSorted.forEach(r => {
-    const key = r.division || 'Unknown';
+    const key = divisionLabel(r.division);
     if (!byDiv[key]) byDiv[key] = [];
     byDiv[key].push(r);
   });
