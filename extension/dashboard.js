@@ -224,6 +224,7 @@ let selectedDiv       = null;     // canonical division key (null = All)
 let selectedDatePreset = '6m';   // analytics range; resets to six months on dashboard load
 let classificationData = null;  // data from uspsa.org/classification/[memberNumber]
 let classifiersOnly  = false;   // when true, charts show only classifier stage scores
+let adjustedOnly     = false;   // when true, Score Over Time shows only adjusted match points
 
 const NON_USPSA_TYPES = new Set(['IDPA', 'IPSC', 'Steel Challenge', '3-Gun', 'PCSL', 'ICORE', 'SCSA']);
 // Confirmed USPSA types — only these count toward the USPSA match total in the status line.
@@ -733,15 +734,36 @@ chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache',
 function switchView(view) {
   currentView = view;
   document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  const toggleWrap = document.getElementById('classifiersToggleWrap');
   if (view !== 'ranked') {
     classifiersOnly = false;
-    document.getElementById('classifiersOnlyChk').checked = false;
-    toggleWrap.classList.remove('active');
-    toggleWrap.style.display = 'none';
-  } else {
-    toggleWrap.style.display = 'flex';
+    adjustedOnly = false;
   }
+  syncChartModeControls();
+}
+
+function syncChartModeControls() {
+  const modes = [
+    ['classifiersOnlyChk', 'classifiersToggleWrap', classifiersOnly],
+    ['adjustedOnlyChk', 'adjustedToggleWrap', adjustedOnly],
+  ];
+  modes.forEach(([inputId, wrapId, active]) => {
+    document.getElementById(inputId).checked = active;
+    const wrap = document.getElementById(wrapId);
+    wrap.classList.toggle('active', active);
+    wrap.style.display = currentView === 'ranked' ? 'flex' : 'none';
+  });
+}
+
+function setChartMode(mode, enabled) {
+  if (mode === 'classifiers') {
+    classifiersOnly = enabled;
+    if (enabled) adjustedOnly = false;
+  } else {
+    adjustedOnly = enabled;
+    if (enabled) classifiersOnly = false;
+  }
+  syncChartModeControls();
+  renderAll();
 }
 
 document.querySelectorAll('.view-btn').forEach(btn => {
@@ -752,9 +774,11 @@ document.querySelectorAll('.view-btn').forEach(btn => {
 });
 
 document.getElementById('classifiersOnlyChk').addEventListener('change', e => {
-  classifiersOnly = e.target.checked;
-  document.getElementById('classifiersToggleWrap').classList.toggle('active', classifiersOnly);
-  renderAll();
+  setChartMode('classifiers', e.target.checked);
+});
+
+document.getElementById('adjustedOnlyChk').addEventListener('change', e => {
+  setChartMode('adjusted', e.target.checked);
 });
 
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
@@ -1119,7 +1143,7 @@ function renderAll() {
   summaryBar.classList.add('visible');
   chartsEl.classList.add('visible');
   sizeCanvases();
-  document.getElementById('classifiersToggleWrap').style.display = currentView === 'ranked' ? 'flex' : 'none';
+  syncChartModeControls();
 
   if (sorted.length === 0) {
     const msg = selectedDiv
@@ -1137,6 +1161,8 @@ function renderAll() {
     document.getElementById('statAdjAvgBox').style.display = 'none';
     document.getElementById('chartTimeTitle').textContent = classifiersOnly
       ? 'Classifier Scores Over Time'
+      : adjustedOnly
+      ? 'Adjusted % Over Time'
       : 'Score Over Time';
     document.getElementById('chartPlaceSubtitle').textContent = '';
     setPlacementVisible(!classifiersOnly);
@@ -1167,6 +1193,8 @@ function renderAll() {
     document.getElementById('statAdjAvgBox').style.display = 'none';
     document.getElementById('chartTimeTitle').textContent = classifiersOnly
       ? 'Classifier Scores Over Time'
+      : adjustedOnly
+      ? 'Adjusted % Over Time'
       : 'Score Over Time';
     document.getElementById('chartPlaceSubtitle').textContent = '';
     setPlacementVisible(!classifiersOnly);
@@ -1444,20 +1472,41 @@ function renderAll() {
     });
   }
 
-  // Add adjusted series if we have data (dashed line, distinct color)
-  if (adjPoints.length >= 2) {
-    scoreSeries.push({
-      label: 'Adjusted %',
-      color: '#ff4081',
-      dash: true,
-      points: adjPoints,
+  const adjustedSeries = {
+    label: 'Adjusted %',
+    color: '#ff4081',
+    dash: true,
+    points: adjPoints,
+  };
+
+  if (adjustedOnly) {
+    document.getElementById('chartTimeTitle').textContent = 'Adjusted % Over Time';
+    if (adjPoints.length >= 2) {
+      drawMultiSeriesChart(
+        document.getElementById('chartTime'),
+        [adjustedSeries],
+        adjPoints.map(point => point.date),
+        {
+          yLabel: 'Adjusted match %', yMin: 0, yMax: 100, invertY: false,
+          trend: true, valueUnit: 'match%', preserveDuplicateDates: true,
+        }
+      );
+    } else {
+      drawMessage(
+        document.getElementById('chartTime'),
+        'Adjusted % needs 2 usable matches.\n' +
+        'Refresh older matches for non-classifier\n' +
+        'cross-division benchmark data.'
+      );
+    }
+  } else {
+    // Add adjusted series if we have data (dashed line, distinct color)
+    if (adjPoints.length >= 2) scoreSeries.push(adjustedSeries);
+    drawMultiSeriesChart(document.getElementById('chartTime'), scoreSeries, allDates, {
+      yLabel: 'Match performance %', yMin: 0, yMax: 100, invertY: false,
+      trend: scoreSeries.length <= 2, valueUnit: 'match%',
     });
   }
-
-  drawMultiSeriesChart(document.getElementById('chartTime'), scoreSeries, allDates, {
-    yLabel: 'Match performance %', yMin: 0, yMax: 100, invertY: false,
-    trend: scoreSeries.length <= 2, valueUnit: 'match%',
-  });
 
   const placeSeries = Object.entries(byDiv).map(([div, matches], i) => {
     const placeMatches = matches.filter(r => {
@@ -3336,8 +3385,15 @@ function drawLineChart(canvas, points, opts = {}) {
 function drawMessage(canvas, msg) {
   const ctx = canvas.getContext('2d');
   clearCanvas(ctx, canvas);
+  canvas._hitMap = [];
+  canvas._valueUnit = '';
+  canvas.style.cursor = '';
+  tooltipEl.style.display = 'none';
   ctx.fillStyle = TEXT_COLOR(); ctx.font = '13px Inter, system-ui, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText(msg, canvas.width / 2, canvas.height / 2);
+  const lines = String(msg).split('\n');
+  const lineHeight = 19;
+  const firstY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, index) => ctx.fillText(line, canvas.width / 2, firstY + index * lineHeight));
 }
 
 // ── Stacked bar chart — hit zone breakdown ────────────────────────────────────
