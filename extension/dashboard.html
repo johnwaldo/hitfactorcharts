@@ -443,6 +443,12 @@
     .chart-summary .s-down { color: #ff6b6b; font-weight: 600; }
     .chart-summary .s-flat { color: #888;    font-weight: 500; }
     .chart-summary .s-note { font-size: 12px; color: #aab3c2; }
+    .chart-subtitle {
+      font-size: 12px;
+      color: #aab3c2;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
 
     /* ── Chart explanatory note ── */
     .chart-note {
@@ -1213,6 +1219,7 @@
     [data-theme="light"] .chart-summary--adj { border-top-color: #e0e2e8; }
     [data-theme="light"] .chart-summary .s-val { color: #1a1d27; }
     [data-theme="light"] .chart-summary .s-note { color: #4f596b; }
+    [data-theme="light"] .chart-subtitle { color: #4f596b; }
     [data-theme="light"] #exportCsvBtn { color: #8a9bb0; border-color: #d0d4dc; }
     [data-theme="light"] #exportCsvBtn:hover { color: #16a34a; border-color: #16a34a; }
     [data-theme="light"] .match-list-header { border-bottom-color: #e0e2e8; color: #5a6478; }
@@ -1459,9 +1466,9 @@
   <div class="chart-section" id="chartNonClfSection" style="display:none">
     <div class="chart-section-header">
       <h3>Non-Classifier Stage Trend</h3>
-      <span style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">Avg HF% across non-classifier stages per match</span>
+      <span class="chart-subtitle">Average stage % compared with each match's top shooter — not a USPSA classification</span>
     </div>
-    <canvas id="chartNonClf" height="180"></canvas>
+    <canvas id="chartNonClf" height="220"></canvas>
   </div>
   <div class="chart-section" id="chartClfOverlaySection" style="display:none">
     <div class="chart-section-header">

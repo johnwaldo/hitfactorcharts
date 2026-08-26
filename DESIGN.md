@@ -27,6 +27,8 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Date ticks use measured text width and a minimum 10px gap. Keep the final date only when it does not collide with the preceding retained label.
 - Suppress labels for duplicate source dates while preserving distinct same-day data points and tooltips. If different years share the same month and day, include the year so useful dates remain distinguishable.
 - Axis labels must remain inside the canvas and readable in both themes at narrow, desktop, and wide widths.
+- Non-classifier stage percentages are match-relative comparisons with each stage's top shooter. Present them on a linear 0–100% scale without USPSA classification bands, labels, colours, or warped geometry.
+- Keep same-day non-classifier matches as separate chart points and tooltips while rendering their shared date label only once.
 
 ## Analytics date range
 

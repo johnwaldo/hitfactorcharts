@@ -1505,8 +1505,8 @@ function renderAll() {
   }
 
   // ── Non-classifier stage trend ────────────────────────────────────────────
-  // Shows avg HF% across non-classifier stages per match — a stable cross-match
-  // progression signal since classifier stages are one-off courses.
+  // Shows average match-relative stage percentage for non-classifier stages.
+  // Each stage is compared with that match's top shooter, not a national HHF.
   // Only shown when at least 2 matches have non-classifier stage data.
   const nonClfSection = document.getElementById('chartNonClfSection');
   const nonClfPoints = [];
@@ -1523,7 +1523,6 @@ function renderAll() {
       y: avgPct,
       label: r.match_name,
       division: r.division,
-      class_: r.class_,
       stageCount: nonClfStages.length,
     });
   }
@@ -1531,11 +1530,11 @@ function renderAll() {
 
   if (nonClfPoints.length >= 2) {
     nonClfSection.style.display = '';
-    const nonClfSeries = [{ label: 'Non-Clf Avg %', color: '#00bcd4', points: nonClfPoints }];
+    const nonClfSeries = [{ label: 'Avg vs top shooter', color: '#00bcd4', points: nonClfPoints }];
     const nonClfDates  = nonClfPoints.map(p => p.date);
     drawMultiSeriesChart(document.getElementById('chartNonClf'), nonClfSeries, nonClfDates, {
-      yLabel: 'Avg Stage %', yMin: 0, yMax: 100, invertY: false, trend: true, valueUnit: '%',
-      showClassBands: true,
+      yLabel: '% compared with top shooter', yMin: 0, yMax: 100, invertY: false,
+      trend: true, valueUnit: 'top%', preserveDuplicateDates: true,
     });
   } else {
     nonClfSection.style.display = 'none';
@@ -2937,7 +2936,10 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
   const area = chartArea(canvas);
   clearCanvas(ctx, canvas);
 
-  const { yLabel = '', yMin, yMax, invertY = false, trend = false, valueUnit = '%', showClassBands = false } = opts;
+  const {
+    yLabel = '', yMin, yMax, invertY = false, trend = false, valueUnit = '%',
+    showClassBands = false, preserveDuplicateDates = false,
+  } = opts;
 
   const allY   = seriesArr.flatMap(s => s.points.map(p => p.y)).filter(v => v != null);
   const rawMin = yMin != null ? yMin : Math.min(...allY);
@@ -2948,8 +2950,8 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
   // Falls back to null (linear scale) when fewer than two bands are visible.
   const warpMap = showClassBands ? buildWarpMap(rawMin, rawMax) : null;
 
-  const dateToCanvasX = date => {
-    const idx = allDates.indexOf(date);
+  const dateToCanvasX = (date, pointIndex = null) => {
+    const idx = preserveDuplicateDates && pointIndex != null ? pointIndex : allDates.indexOf(date);
     return area.x0 + (idx / Math.max(allDates.length - 1, 1)) * area.w;
   };
   const toY = v => {
@@ -3015,7 +3017,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
   // X date labels
   ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
   const dateLabels = formatAxisDateLabels(allDates);
-  const datePositions = allDates.map(dateToCanvasX);
+  const datePositions = allDates.map((date, index) => dateToCanvasX(date, index));
   selectAxisTickIndices(dateLabels, datePositions, label => ctx.measureText(label).width)
     .forEach(index => {
       ctx.fillText(dateLabels[index], datePositions[index], area.y0 + area.h + 14);
@@ -3047,8 +3049,8 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
       const inter = (sy - slope * sx) / n;
       ctx.strokeStyle = 'rgba(255,152,0,0.45)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
       ctx.beginPath();
-      ctx.moveTo(dateToCanvasX(pts[0].date),          toY(inter));
-      ctx.lineTo(dateToCanvasX(pts[n - 1].date),      toY(slope * (n - 1) + inter));
+      ctx.moveTo(dateToCanvasX(pts[0].date, 0),          toY(inter));
+      ctx.lineTo(dateToCanvasX(pts[n - 1].date, n - 1), toY(slope * (n - 1) + inter));
       ctx.stroke(); ctx.setLineDash([]);
     }
   }
@@ -3063,14 +3065,14 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
     if (s.dash) ctx.setLineDash([6, 4]);
     ctx.beginPath();
     pts.forEach((p, i) => {
-      const cx = dateToCanvasX(p.date), cy = toY(p.y);
+      const cx = dateToCanvasX(p.date, i), cy = toY(p.y);
       i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
     });
     ctx.stroke();
     if (s.dash) ctx.setLineDash([]);
 
-    pts.forEach(p => {
-      const cx = dateToCanvasX(p.date), cy = toY(p.y);
+    pts.forEach((p, index) => {
+      const cx = dateToCanvasX(p.date, index), cy = toY(p.y);
       ctx.fillStyle = s.color;
       ctx.beginPath(); ctx.arc(cx, cy, s.dash ? 3 : 4, 0, Math.PI * 2); ctx.fill();
       hitMap.push({ cx, cy, color: s.color, seriesLabel: s.label, valueUnit, ...p });
@@ -3119,6 +3121,8 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
             ? `<span style="color:${classBand.text};font-size:10px;margin-left:6px">${classBand.label}</span>` : '';
           const mainVal = unit === '%'
             ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}%${classLabel} <span style="font-size:11px;color:#666">(div)</span></div>`
+            : unit === 'top%'
+            ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}% <span style="font-size:11px;color:#aab3c2">compared with top shooter</span></div>`
             : unit === 'place%'
             ? `<div class="tt-score" style="color:${h.color}">Place ${h.rawPlace} / ${h.total} <span style="font-size:11px;color:#666">(beat ${h.y.toFixed(1)}% of field)</span></div>`
             : `<div class="tt-score" style="color:${h.color}">Place ${h.y}${h.total ? ' / ' + h.total : ''}</div>`;
