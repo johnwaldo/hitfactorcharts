@@ -18,7 +18,7 @@ chrome.action.onClicked.addListener(async () => {
 // ── Message handler ───────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.action === 'fetchScores') {
-    fetchScores(msg.memberNumber, msg.name)
+    fetchScores(msg.memberNumber, msg.name, msg.fetchTimeline)
       .then(data  => sendResponse({ ok: true,  data }))
       .catch(err  => sendResponse({ ok: false, error: err.message }));
     return true;
@@ -57,6 +57,106 @@ async function updateMatchCache(matchId, scoreData) {
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+const FETCH_TIMELINES = Object.freeze({
+  '1m':  { label: 'Last 1 month', months: 1 },
+  '3m':  { label: '3 mo',         months: 3 },
+  '6m':  { label: '6 mo',         months: 6 },
+  '1y':  { label: '1 yr',         months: 12 },
+  '3y':  { label: '3 yr',         months: 36 },
+  'all': { label: 'all time',     months: null },
+});
+
+function localDateOnly(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function subtractCalendarMonths(dateOnly, months) {
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  const monthIndex = month - 1 - months;
+  const targetYear = year + Math.floor(monthIndex / 12);
+  const targetMonth = ((monthIndex % 12) + 12) % 12;
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  return localDateOnly(new Date(targetYear, targetMonth, Math.min(day, lastDay)));
+}
+
+function normalizeDateOnly(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function resolveFetchTimeline(requested, referenceDate = new Date()) {
+  const requestedValue = typeof requested === 'object' ? requested?.value : requested;
+  const value = Object.hasOwn(FETCH_TIMELINES, requestedValue) ? requestedValue : '6m';
+  const preset = FETCH_TIMELINES[value];
+  const end = preset.months == null ? null : localDateOnly(referenceDate);
+  const start = end == null ? null : subtractCalendarMonths(end, preset.months);
+  return { value, label: preset.label, start, end };
+}
+
+function filterMatchListByTimeline(matchList, scope) {
+  let invalidDateCount = 0;
+  let futureDateCount = 0;
+  let beforeCutoffCount = 0;
+
+  if (scope.value === 'all') {
+    invalidDateCount = matchList.filter(match => normalizeDateOnly(match.date) == null).length;
+    return { matches: [...matchList], invalidDateCount, futureDateCount, beforeCutoffCount };
+  }
+
+  const matches = matchList.filter(match => {
+    const date = normalizeDateOnly(match.date);
+    if (!date) {
+      invalidDateCount++;
+      return false;
+    }
+    if (date > scope.end) {
+      futureDateCount++;
+      return false;
+    }
+    if (date < scope.start) {
+      beforeCutoffCount++;
+      return false;
+    }
+    return true;
+  });
+  return { matches, invalidDateCount, futureDateCount, beforeCutoffCount };
+}
+
+function mergeMatchLists(existing, incoming, { preserveMissing = true } = {}) {
+  const existingById = new Map((existing || []).filter(match => match?.match_id).map(match => [match.match_id, match]));
+  const incomingIds = new Set();
+  const merged = [];
+
+  for (const match of incoming || []) {
+    if (!match?.match_id || incomingIds.has(match.match_id)) continue;
+    incomingIds.add(match.match_id);
+    const prior = existingById.get(match.match_id) || {};
+    const next = { ...prior, ...match };
+    if (next.match_type === 'Unknown' && prior.match_type && prior.match_type !== 'Unknown') {
+      next.match_type = prior.match_type;
+    }
+    merged.push(next);
+  }
+
+  if (preserveMissing) {
+    for (const match of existing || []) {
+      if (!match?.match_id || incomingIds.has(match.match_id)) continue;
+      incomingIds.add(match.match_id);
+      merged.push(match);
+    }
+  }
+  return merged;
+}
 
 // ── Match type detection ──────────────────────────────────────────────────────
 function detectMatchType(name) {
@@ -792,13 +892,15 @@ async function fetchUSPSAClassification(memberNumber, push) {
 }
 
 // ── Fetch all match scores ────────────────────────────────────────────────────
-async function fetchScores(memberNumber, name) {
+async function fetchScores(memberNumber, name, requestedTimeline) {
   const log = [];
   const push = m => { log.push(m); console.log('[HFC]', m); };
   let tabId = null;
+  const fetchScope = resolveFetchTimeline(requestedTimeline);
 
   try {
-    push('Loading match history…');
+    const bounds = fetchScope.value === 'all' ? '' : ` (${fetchScope.start} through ${fetchScope.end})`;
+    push(`Loading match history — fetch timeline: ${fetchScope.label}${bounds}…`);
     const tab = await chrome.tabs.create({ url: `${PS_BASE}/associate/step2`, active: false });
     tabId = tab.id;
     await waitForTabLoad(tabId);
@@ -815,13 +917,36 @@ async function fetchScores(memberNumber, name) {
     push(`Found ${rawMatchList.length} match(es).`);
     console.log('[HFC] matchList:', JSON.stringify(rawMatchList, null, 2));
 
-    if (rawMatchList.length === 0) {
-      push('No matches found — are you logged into PractiScore?');
-      return { results: [], log };
-    }
-
     // Annotate every match with its detected type
-    const matchList = rawMatchList.map(m => ({ ...m, match_type: detectMatchType(m.match_name) }));
+    const annotatedMatchList = rawMatchList.map(m => ({ ...m, match_type: detectMatchType(m.match_name) }));
+    const filtered = filterMatchListByTimeline(annotatedMatchList, fetchScope);
+    const matchList = filtered.matches;
+    Object.assign(fetchScope, {
+      extractedCount: rawMatchList.length,
+      inRangeCount: matchList.length,
+      invalidDateCount: filtered.invalidDateCount,
+      futureDateCount: filtered.futureDateCount,
+      beforeCutoffCount: filtered.beforeCutoffCount,
+    });
+    push(`Fetch timeline ${fetchScope.label}: ${matchList.length}/${rawMatchList.length} match(es) in range.`);
+    if (filtered.invalidDateCount && fetchScope.value === 'all') {
+      push(`Retaining ${filtered.invalidDateCount} match(es) with missing or malformed dates for this all-time fetch.`);
+    } else if (filtered.invalidDateCount) {
+      push(`Skipping ${filtered.invalidDateCount} match(es) with missing or malformed dates for this bounded fetch.`);
+    }
+    if (filtered.futureDateCount) push(`Skipping ${filtered.futureDateCount} future-dated match(es).`);
+    if (filtered.beforeCutoffCount) push(`Skipping ${filtered.beforeCutoffCount} match(es) before ${fetchScope.start}.`);
+
+    const stored = await chrome.storage.local.get(['lastMatchList', 'matchCache']);
+    const previousMatchList = stored.lastMatchList || [];
+    const cache = stored.matchCache || {};
+    const preserveMissingHistory = fetchScope.value !== 'all' || rawMatchList.length === 0;
+    let mergedMatchList = mergeMatchLists(previousMatchList, matchList, { preserveMissing: preserveMissingHistory });
+    await chrome.storage.local.set({ lastMatchList: mergedMatchList });
+
+    if (rawMatchList.length === 0) {
+      push('No matches extracted — preserving previously cached history.');
+    }
 
     // Level 1: skip confirmed non-USPSA matches before fetching scores
     const uspsaMatches = matchList.filter(m => isLikelyUSPSA(m.match_type));
@@ -831,11 +956,7 @@ async function fetchScores(memberNumber, name) {
       push(`Skipping ${skipped} non-USPSA match(es): ${names}`);
     }
 
-    // Save ALL matches (with types) so users can see and manage their full history
-    await chrome.storage.local.set({ lastMatchList: matchList });
-
-    push('Fetching scores…');
-    const cache = await getCache();
+    push(`Fetching scores for ${uspsaMatches.length} in-range USPSA match(es)…`);
     const results = [];
 
     // Include non-USPSA matches in results (without scores) for history display
@@ -876,8 +997,9 @@ async function fetchScores(memberNumber, name) {
       push(`     score: ${score.overall_pct != null ? score.overall_pct + '%' : 'not found'} [${score.found_by || 'none'}]`);
     }
 
-    // Re-save lastMatchList with any match_type values confirmed from the results pages
-    await chrome.storage.local.set({ lastMatchList: matchList });
+    // Re-save the merged list with any match types confirmed from results pages.
+    mergedMatchList = mergeMatchLists(previousMatchList, matchList, { preserveMissing: preserveMissingHistory });
+    await chrome.storage.local.set({ lastMatchList: mergedMatchList });
 
     const n = results.filter(r => r.overall_pct != null).length;
     push(`Done — ${n}/${uspsaMatches.length} matches with scores.`);
@@ -895,7 +1017,17 @@ async function fetchScores(memberNumber, name) {
       }
     }
 
-    return { results, log, classificationData, _not_logged_in_uspsa };
+    const fetchedById = new Map(results.map(result => [result.match_id, result]));
+    const combinedResults = mergedMatchList.map(match => {
+      if (fetchedById.has(match.match_id)) return fetchedById.get(match.match_id);
+      const cached = cache[match.match_id];
+      if (cached && cached.cached_for === (memberNumber || '').toUpperCase()) {
+        return { ...match, ...cached, _cached: true };
+      }
+      return buildResult(match, {}, memberNumber);
+    });
+
+    return { results: combinedResults, log, classificationData, _not_logged_in_uspsa, fetchScope };
 
   } finally {
     if (tabId) chrome.tabs.remove(tabId).catch(() => {});

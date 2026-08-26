@@ -41,6 +41,14 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Use compact native buttons with a clear keyboard focus ring. The group wraps at narrow widths rather than becoming a dropdown or creating horizontal page overflow.
 - Date-range changes update the existing cached analytics immediately. They do not hide or delete older Match History records.
 
+## Fetch timeline
+
+- Place the labelled native Fetch timeline select immediately before **Fetch Scores**. Use the same six labels as the analytics presets, default to **6 mo**, and persist the latest selection locally.
+- Fetch timeline controls pre-fetch request scope; analytics presets independently filter cached data. Keep that distinction explicit in status and documentation.
+- The current visible select value is the next fetch scope. Changing it alone makes no request.
+- Preserve older cache and Match History entries when a narrower timeline is fetched. Explicit single-match refresh remains unrestricted.
+- Keep the label and select together as controls wrap at narrow widths, with visible focus and no page-level horizontal overflow.
+
 ## Master Calendar
 
 - Show exactly six chronological calendar-month blocks: the current month and the previous five months. Keep this window independent from the graph date preset.

@@ -32,6 +32,7 @@ document.getElementById('headerVersion').textContent = 'v' + chrome.runtime.getM
 const memberInput  = document.getElementById('memberInput');
 const nameInput    = document.getElementById('nameInput');
 const divisionFilter = document.getElementById('divisionFilter');
+const fetchTimelineSelect = document.getElementById('fetchTimeline');
 const fetchBtn     = document.getElementById('fetchBtn');
 const editBtn      = document.getElementById('editBtn');
 const saveBtn      = document.getElementById('saveBtn');
@@ -225,6 +226,29 @@ let selectedDatePreset = '6m';   // analytics range; resets to six months on das
 let classificationData = null;  // data from uspsa.org/classification/[memberNumber]
 let classifiersOnly  = false;   // when true, charts show only classifier stage scores
 let adjustedOnly     = false;   // when true, Score Over Time shows only adjusted match points
+let selectedFetchTimeline = '6m'; // pre-fetch request scope; independent of analytics range
+let lastFetchScope = null;
+
+const FETCH_TIMELINE_PRESETS = Object.freeze({
+  '1m':  { label: 'Last 1 month', months: 1 },
+  '3m':  { label: '3 mo',         months: 3 },
+  '6m':  { label: '6 mo',         months: 6 },
+  '1y':  { label: '1 yr',         months: 12 },
+  '3y':  { label: '3 yr',         months: 36 },
+  'all': { label: 'all time',     months: null },
+});
+
+function normalizeFetchTimeline(value) {
+  return Object.hasOwn(FETCH_TIMELINE_PRESETS, value) ? value : '6m';
+}
+
+function resolveFetchTimeline(value, referenceDate = new Date()) {
+  const normalized = normalizeFetchTimeline(value);
+  const preset = FETCH_TIMELINE_PRESETS[normalized];
+  const end = preset.months == null ? null : localDateOnly(referenceDate);
+  const start = end == null ? null : subtractCalendarMonths(end, preset.months);
+  return { value: normalized, label: preset.label, start, end };
+}
 
 const NON_USPSA_TYPES = new Set(['IDPA', 'IPSC', 'Steel Challenge', '3-Gun', 'PCSL', 'ICORE', 'SCSA']);
 // Confirmed USPSA types — only these count toward the USPSA match total in the status line.
@@ -683,7 +707,7 @@ function hideOnboarding() {
 }
 
 // ── Restore persisted state on load ──────────────────────────────────────────
-chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision'], async d => {
+chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision', 'fetchTimeline'], async d => {
   // Try restoring from sync if local has no credentials (e.g. after reinstall)
   if (!d.memberNumber && !d.name) {
     await restoreFromSync();
@@ -699,6 +723,8 @@ chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache',
   if (d.stageOverrides && typeof d.stageOverrides === 'object') stageOverrides = d.stageOverrides;
   selectedDiv = normalizeDivision(d.selectedDivision);
   divisionFilter.value = selectedDiv || '';
+  selectedFetchTimeline = normalizeFetchTimeline(d.fetchTimeline);
+  fetchTimelineSelect.value = selectedFetchTimeline;
 
   // Lock inputs if we already have saved credentials
   if (d.memberNumber || d.name) {
@@ -793,10 +819,18 @@ divisionFilter.addEventListener('change', () => {
   updateStatusCounts();
 });
 
+fetchTimelineSelect.addEventListener('change', () => {
+  selectedFetchTimeline = normalizeFetchTimeline(fetchTimelineSelect.value);
+  fetchTimelineSelect.value = selectedFetchTimeline;
+  chrome.storage.local.set({ fetchTimeline: selectedFetchTimeline });
+});
+
 // ── Fetch button ──────────────────────────────────────────────────────────────
 fetchBtn.addEventListener('click', async () => {
   const memberNumber = memberInput.value.trim().toUpperCase();
   const name         = nameInput.value.trim();
+  selectedFetchTimeline = normalizeFetchTimeline(fetchTimelineSelect.value);
+  const fetchTimeline = resolveFetchTimeline(selectedFetchTimeline);
   if (!memberNumber && !name) { setStatus('Please enter your USPSA member number and/or your name.', 'error'); return; }
 
   // Dismiss onboarding permanently once the user initiates a fetch
@@ -829,16 +863,18 @@ fetchBtn.addEventListener('click', async () => {
     matchHistory.classList.remove('visible');
   }
 
-  chrome.storage.local.set({ memberNumber, name });
+  chrome.storage.local.set({ memberNumber, name, fetchTimeline: selectedFetchTimeline });
   lockInputs();
-  setStatus('Opening PractiScore tab…', '', true);
+  setStatus(`Opening PractiScore tab — fetch timeline: ${fetchTimeline.label}…`, '', true);
   fetchBtn.disabled = true;
   noDataEl.style.display   = 'none';
   debugLogEl.style.display = 'none';
   allResults = [];
 
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'fetchScores', memberNumber, name });
+    const response = await chrome.runtime.sendMessage({
+      action: 'fetchScores', memberNumber, name, fetchTimeline,
+    });
     if (!response.ok) throw new Error(response.error || 'Unknown error');
     if (response.data._not_logged_in_ps) {
       document.getElementById('psLoginWarning').style.display = 'block';
@@ -847,7 +883,8 @@ fetchBtn.addEventListener('click', async () => {
     }
     document.getElementById('psLoginWarning').style.display = 'none';
 
-    const { results, log } = response.data;
+    const { results, log, fetchScope } = response.data;
+    lastFetchScope = fetchScope || fetchTimeline;
 
     if (log?.length) {
       debugLogEl.textContent = log.join('\n');
@@ -856,7 +893,7 @@ fetchBtn.addEventListener('click', async () => {
 
     if (!results?.length) {
       noDataEl.style.display = 'block';
-      setStatus('No matches found.', 'error');
+      setStatus(`No matches found in ${lastFetchScope.label} (${lastFetchScope.inRangeCount || 0} in range).`, 'error');
       return;
     }
 
@@ -2400,7 +2437,10 @@ function updateStatusCounts(verb) {
   const checkedNote      = checked < uspsa ? ` · ${checked} checked` : '';
   const unconfirmedNote  = unconfirmed.length > 0 ? ` · ${unconfirmed.length} unconfirmed type` : '';
   const skippedNote      = nonUspsa.length > 0    ? ` · ${nonUspsa.length} non-USPSA excluded` : '';
-  setStatus(`${prefix}${divisionNote} ${uspsa} USPSA match(es) — ${scored} with scores${checkedNote}.${unconfirmedNote}${skippedNote}`, 'success');
+  const fetchNote        = lastFetchScope
+    ? ` · Fetch ${lastFetchScope.label}: ${lastFetchScope.inRangeCount ?? '?'} in range`
+    : '';
+  setStatus(`${prefix}${divisionNote} ${uspsa} USPSA match(es) — ${scored} with scores${checkedNote}.${unconfirmedNote}${skippedNote}${fetchNote}`, 'success');
 }
 
 // ── Save icon SVG (floppy disk, feather-style) ────────────────────────────────

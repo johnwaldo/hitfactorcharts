@@ -101,7 +101,7 @@ The Hit Factor Charts icon will appear in your Chrome toolbar. Pin it for easy a
 
 3. **Enter your member number and/or name** — type your USPSA member number (e.g. `A12345`) and/or your name as it appears on result sheets (e.g. `Smith, Jane`). At least one is required; providing both improves match accuracy.
 
-4. **Click Fetch Scores** — the extension navigates to your PractiScore history, opens each match's results page, selects your division, and records your score. Progress is shown in the status bar.
+4. **Choose a Fetch timeline and click Fetch Scores** — the timeline defaults to **6 mo** and limits which PractiScore matches receive score and stage requests. The extension opens each in-range match's results page, selects your division, and records your score. Progress is shown in the status bar.
 
 5. **Explore your data** — the summary bar shows matches found, average %, best %, field-strength adjusted average, and your USPSA classification. The **Scored Matches / All Matches** toggle below the cards switches between member-number lookup results and all name-matched results.
 
@@ -125,6 +125,8 @@ The **Non-Classifier Stage Trend** averages your included non-classifier stage p
 ### Filtering by date
 
 Analytics open on the most recent **6 mo** so trends stay readable. Use the buttons above the charts to switch to **Last 1 month**, **3 mo**, **6 mo**, **1 yr**, **3 yr**, or **all time**. The active range applies to every chart, summary statistic, classifier-only view, and chart CSV export without re-fetching or deleting older Match History records.
+
+The **Fetch timeline** dropdown beside **Fetch Scores** is separate: it limits network requests before a fetch begins and remembers your last choice. A narrower fetch merges new results with older cached Match History instead of deleting it. Choose a broader timeline to retrieve older uncached matches; changing the dropdown alone does not make a request. **all time** keeps the original unrestricted fetch behavior, and refreshing one match remains unrestricted.
 
 ### Using the Master Calendar
 
