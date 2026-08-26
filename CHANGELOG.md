@@ -4,9 +4,15 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.6.4 — 2026-08-26
+
 ### Added
 
 - A persistent division selector before the USPSA member-number field now filters charts, statistics, classifier analysis, Match History, status counts, and CSV exports without re-fetching scores.
+
+### Documentation
+
+- README now explains how the saved division filter applies across the dashboard without deleting cached scores from other divisions.
 
 ## v1.6.3 — 2026-08-24
 
