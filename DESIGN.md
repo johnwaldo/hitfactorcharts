@@ -25,7 +25,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 
 - Trend summaries must state their comparison and use percentage-point units. When labelled **Stable**, show the metric-specific threshold in visible supporting text.
 - Date ticks use measured text width and a minimum 10px gap. Keep the final date only when it does not collide with the preceding retained label.
-- Suppress duplicate date labels while preserving distinct same-day data points and tooltips.
+- Suppress labels for duplicate source dates while preserving distinct same-day data points and tooltips. If different years share the same month and day, include the year so useful dates remain distinguishable.
 - Axis labels must remain inside the canvas and readable in both themes at narrow, desktop, and wide widths.
 
 ## Analytics date range

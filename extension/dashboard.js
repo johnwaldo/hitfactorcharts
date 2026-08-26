@@ -2826,6 +2826,24 @@ function selectAxisTickIndices(labels, positions, measureText, minGap = 10) {
   return selected;
 }
 
+function formatAxisDateLabels(dates) {
+  const distinctDatesByShortLabel = new Map();
+  dates.forEach(date => {
+    if (!date) return;
+    const shortLabel = date.substring(5);
+    if (!distinctDatesByShortLabel.has(shortLabel)) {
+      distinctDatesByShortLabel.set(shortLabel, new Set());
+    }
+    distinctDatesByShortLabel.get(shortLabel).add(date);
+  });
+
+  return dates.map((date, index) => {
+    if (!date) return `#${index + 1}`;
+    const shortLabel = date.substring(5);
+    return distinctDatesByShortLabel.get(shortLabel).size > 1 ? date : shortLabel;
+  });
+}
+
 // Read CSS custom properties for canvas drawing (canvas doesn't support var())
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -2996,7 +3014,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
 
   // X date labels
   ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
-  const dateLabels = allDates.map(date => date.substring(5));
+  const dateLabels = formatAxisDateLabels(allDates);
   const datePositions = allDates.map(dateToCanvasX);
   selectAxisTickIndices(dateLabels, datePositions, label => ctx.measureText(label).width)
     .forEach(index => {
@@ -3229,7 +3247,7 @@ function drawLineChart(canvas, points, opts = {}) {
 
   // X labels (MM-DD)
   ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
-  const pointLabels = points.map((point, index) => point.date ? point.date.substring(5) : `#${index + 1}`);
+  const pointLabels = formatAxisDateLabels(points.map(point => point.date));
   const pointPositions = points.map((_, index) => toX(index));
   selectAxisTickIndices(pointLabels, pointPositions, label => ctx.measureText(label).width)
     .forEach(index => {
@@ -3339,7 +3357,7 @@ function drawStackedBarChart(canvas, bars) {
 
   // X labels
   ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
-  const barLabels = bars.map((bar, index) => bar.date ? bar.date.substring(5) : `#${index + 1}`);
+  const barLabels = formatAxisDateLabels(bars.map(bar => bar.date));
   const barPositions = bars.map((_, index) => area.x0 + gap * index + gap / 2);
   selectAxisTickIndices(barLabels, barPositions, label => ctx.measureText(label).width)
     .forEach(index => {
