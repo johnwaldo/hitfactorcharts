@@ -118,6 +118,8 @@ Below the Score Over Time and Placement charts, plain-English summaries show:
 
 Summaries appear automatically once enough data is loaded. Classifier trend requires at least 6 classifier stages.
 
+The **Non-Classifier Stage Trend** averages your included non-classifier stage percentages for each match. Each percentage compares your hit factor with the top shooter on that stage at that match. It uses a linear 0–100% scale and is useful for tracking match-relative performance, but it is not an official USPSA classification percentage and does not use GM/M/A/B/C/D bands.
+
 ### Filtering by date
 
 Analytics open on the most recent **6 mo** so trends stay readable. Use the buttons above the charts to switch to **Last 1 month**, **3 mo**, **6 mo**, **1 yr**, **3 yr**, or **all time**. The active range applies to every chart, summary statistic, classifier-only view, and chart CSV export without re-fetching or deleting older Match History records.
