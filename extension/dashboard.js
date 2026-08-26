@@ -6,11 +6,23 @@ let allResults = [];
 // ── Size canvases to fill their containers ────────────────────────────────────
 function sizeCanvases() {
   document.querySelectorAll('canvas').forEach(c => {
-    const w = c.parentElement?.offsetWidth || 860;
+    const renderedWidth = c.getBoundingClientRect().width;
+    const w = Math.floor(renderedWidth || c.parentElement?.clientWidth || 860);
     if (c.width !== w) c.width = w;
   });
 }
-window.addEventListener('resize', () => { sizeCanvases(); renderAll(); });
+
+let resizeFrame = null;
+function scheduleDashboardResize() {
+  if (resizeFrame !== null) return;
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = null;
+    sizeCanvases();
+    renderAll();
+  });
+}
+
+window.addEventListener('resize', scheduleDashboardResize);
 document.addEventListener('DOMContentLoaded', sizeCanvases);
 
 // ── Version display ───────────────────────────────────────────────────────────
