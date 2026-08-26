@@ -383,14 +383,20 @@
       margin-bottom: 0;
     }
 
-    #classifiersToggleWrap {
+    #chartModeToggles {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+    .chart-mode-toggle {
       display: none;
       align-items: center;
       gap: 7px;
       cursor: pointer;
       user-select: none;
     }
-    #classifiersToggleWrap .toggle-lbl {
+    .chart-mode-toggle .toggle-lbl {
       font-size: 12px;
       font-weight: 600;
       color: #888;
@@ -422,9 +428,10 @@
     }
     .toggle-switch input:checked ~ .toggle-track { background: #1e3a5f; }
     .toggle-switch input:checked ~ .toggle-track .toggle-thumb { transform: translateX(14px); background: #4a9eff; }
-    #classifiersToggleWrap:hover .toggle-track { background: #3a3d4a; }
-    #classifiersToggleWrap:hover .toggle-lbl { color: #888; }
-    #classifiersToggleWrap.active .toggle-lbl { color: #4a9eff; }
+    .toggle-switch input:focus-visible ~ .toggle-track { outline: 2px solid #4a9eff; outline-offset: 3px; }
+    .chart-mode-toggle:hover .toggle-track { background: #3a3d4a; }
+    .chart-mode-toggle:hover .toggle-lbl { color: #888; }
+    .chart-mode-toggle.active .toggle-lbl { color: #4a9eff; }
 
     canvas { display: block; width: 100% !important; }
 
@@ -1438,13 +1445,22 @@
     <div class="chart-section-header">
       <h3 id="chartTimeTitle">Score Over Time</h3>
       <button id="exportCsvBtn" title="Export chart data as CSV">⤓ CSV</button>
-      <label id="classifiersToggleWrap">
-        <span class="toggle-lbl">Classifiers Only</span>
-        <span class="toggle-switch">
-          <input type="checkbox" id="classifiersOnlyChk">
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-        </span>
-      </label>
+      <div id="chartModeToggles">
+        <label id="classifiersToggleWrap" class="chart-mode-toggle">
+          <span class="toggle-lbl">Classifiers Only</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="classifiersOnlyChk">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </span>
+        </label>
+        <label id="adjustedToggleWrap" class="chart-mode-toggle">
+          <span class="toggle-lbl">Adjusted % Only</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="adjustedOnlyChk">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </span>
+        </label>
+      </div>
     </div>
     <canvas id="chartTime" height="380"></canvas>
     <div class="chart-note">
