@@ -3088,7 +3088,14 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
       const r  = canvas.getBoundingClientRect();
       const mx = (e.clientX - r.left) * (canvas.width  / r.width);
       const my = (e.clientY - r.top)  * (canvas.height / r.height);
-      const h  = (canvas._hitMap || []).find(h => Math.hypot(h.cx - mx, h.cy - my) < 16);
+      let h = null;
+      let nearestDistance = 16;
+      for (const candidate of canvas._hitMap || []) {
+        const distance = Math.hypot(candidate.cx - mx, candidate.cy - my);
+        if (distance >= nearestDistance) continue;
+        h = candidate;
+        nearestDistance = distance;
+      }
       if (h) {
         const unit = h.valueUnit;
         // Use escHtml for untrusted strings (match names, stage names) in tooltip innerHTML (F1)
