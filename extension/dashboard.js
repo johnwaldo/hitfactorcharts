@@ -1182,14 +1182,11 @@ function renderAll() {
   const avg  = overallPcts.length ? _avg(overallPcts) : 0;
   const best = overallPcts.length ? Math.max(...overallPcts) : 0;
 
-  const avgBand  = CLASS_BANDS.find(b => avg  >= b.min && avg  < b.max);
-  const bestBand = CLASS_BANDS.find(b => best >= b.min && best < b.max);
-
   document.getElementById('statMatches').textContent = viewSorted.length;
   document.getElementById('statAvg').textContent     = avg.toFixed(1) + '%';
-  document.getElementById('statAvg').style.color     = avgBand?.text.replace('0.55','1') || '#4a9eff';
+  document.getElementById('statAvg').style.color     = '#4a9eff';
   document.getElementById('statBest').textContent    = best.toFixed(1) + '%';
-  document.getElementById('statBest').style.color    = bestBand?.text.replace('0.55','1') || '#4a9eff';
+  document.getElementById('statBest').style.color    = '#4a9eff';
 
   // Stat box tooltips — explain what each metric measures
   const divLabel = selectedDiv ? ` in ${divisionLabel(selectedDiv)}` : '';
@@ -1204,7 +1201,7 @@ function renderAll() {
   document.getElementById('statBestBox').dataset.tip =
     `Your highest single-match score${divLabel}.\n` +
     `Match score = your points ÷ match winner's points × 100.\n` +
-    `Color indicates the USPSA classification band for that score.` + filteredStageTip;
+    `This is match-relative performance, not an official classification percentage.` + filteredStageTip;
 
   // ── Consistency stat card ─────────────────────────────────────────────────
   // Standard deviation of match %. Low stddev = consistent performer.
@@ -1244,18 +1241,17 @@ function renderAll() {
   }
   if (adjMatchPcts.length >= 1) {
     const adjAvg = adjMatchPcts.reduce((s, v) => s + v, 0) / adjMatchPcts.length;
-    const adjBand = CLASS_BANDS.find(b => adjAvg >= b.min && adjAvg < b.max);
     adjAvgVal.textContent = adjAvg.toFixed(1) + '%';
-    adjAvgVal.style.color = adjBand?.text.replace('0.55', '1') || '#ff4081';
+    adjAvgVal.style.color = '#ff4081';
     const adjAvgLbl = adjAvgBox.querySelector('.lbl');
-    if (adjAvgLbl) adjAvgLbl.textContent = adjBand ? `Adj Avg · ${adjBand.label} Class` : 'Adj Avg %';
+    if (adjAvgLbl) adjAvgLbl.textContent = 'Adj Avg %';
     adjAvgBox.dataset.tip =
       `Field-strength adjusted average (${adjMatchPcts.length} match${adjMatchPcts.length > 1 ? 'es' : ''}).\n` +
       `Uses non-classifier stages and the best HF from any division at each match,\n` +
       `normalized to your division using HHF ratios from hitfactor.info.\n` +
       `Classifier stages are skipped because USPSA % is already nationally normalized.\n` +
-      `This gives a more accurate read when no GM/Master is in your division.\n` +
-      `Raw avg: ${avg.toFixed(1)}% → Adjusted: ${adjAvg.toFixed(1)}% (${adjBand?.label || '?'} class)`;
+      `This gives a more accurate read when the division field varies in strength.\n` +
+      `Raw avg: ${avg.toFixed(1)}% → Adjusted: ${adjAvg.toFixed(1)}%. Neither is an official classification percentage.`;
     adjAvgBox.style.display = '';
   } else {
     adjAvgBox.style.display = 'none';
@@ -1335,8 +1331,9 @@ function renderAll() {
     const statPcts     = officialPcts.length ? officialPcts : clfPoints.map(p => p.y);
     const clfAvg  = statPcts.reduce((s, v) => s + v, 0) / statPcts.length;
     const clfBest = Math.max(...statPcts);
-    const avgBandC  = CLASS_BANDS.find(b => clfAvg  >= b.min && clfAvg  < b.max);
-    const bestBandC = CLASS_BANDS.find(b => clfBest >= b.min && clfBest < b.max);
+    const hasOfficialStats = officialPcts.length > 0;
+    const avgBandC  = hasOfficialStats ? CLASS_BANDS.find(b => clfAvg  >= b.min && clfAvg  < b.max) : null;
+    const bestBandC = hasOfficialStats ? CLASS_BANDS.find(b => clfBest >= b.min && clfBest < b.max) : null;
 
     document.getElementById('statMatches').textContent = clfPoints.length;
     document.getElementById('statAvg').textContent  = clfAvg.toFixed(1) + '%';
@@ -1346,15 +1343,17 @@ function renderAll() {
     if (avgLbl) avgLbl.textContent = avgBandC ? `Avg % · ${avgBandC.label} Class` : 'Avg %';
 
     // Classifier-mode tooltips
-    const clfSource = officialPcts.length ? 'official USPSA % vs national HHF' : 'match % vs match top HF';
+    const clfSource = hasOfficialStats ? 'official USPSA % vs national HHF' : 'match % vs match top HF';
     document.getElementById('statAvgBox').dataset.tip =
       `Your average classifier score (${clfSource}),\n` +
       `averaged across all classifier stages in the current view.\n` +
       `USPSA uses your best 6 classifiers to set your classification.`;
     document.getElementById('statBestBox').dataset.tip =
       `Your highest single classifier score (${clfSource}).\n` +
-      `Color indicates the USPSA classification band for that score.\n` +
-      `GM = 95%+, M = 85–95%, A = 75–85%, B = 60–75%, C = 40–60%.`;
+      (hasOfficialStats
+        ? `Color indicates the USPSA classification band for that official score.\n` +
+          `GM = 95%+, M = 85–95%, A = 75–85%, B = 60–75%, C = 40–60%.`
+        : `Match-relative fallback values do not receive an inferred USPSA class.`);
 
     // Build series grouped by division — gives continuous lines over time
     const DIV_PALETTE = ['#4a9eff','#4caf50','#ff9800','#e91e63','#9c27b0','#00bcd4','#ffeb3b','#ff5722'];
@@ -1389,7 +1388,7 @@ function renderAll() {
   // ── Normal mode ──────────────────────────────────────────────────────────────
   document.getElementById('chartTimeTitle').textContent = 'Score Over Time';
   setPlacementVisible(true);
-  if (avgLbl) avgLbl.textContent = avgBand ? `Avg % · ${avgBand.label} Class` : 'Avg %';
+  if (avgLbl) avgLbl.textContent = 'Avg match %';
 
   const DIV_PALETTE = ['#4a9eff','#4caf50','#ff9800','#e91e63','#9c27b0','#00bcd4','#ffeb3b'];
 
