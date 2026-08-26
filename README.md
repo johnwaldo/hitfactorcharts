@@ -26,6 +26,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 - **Match type detection** — identifies USPSA, IDPA, IPSC, Steel Challenge, 3-Gun, PCSL, ICORE matches; non-USPSA matches are shown in history but excluded from charts
 - **Filter matches** — checkboxes let you include or exclude individual matches from charts without deleting them
 - **Readable date ranges** — charts default to six months with one-click presets for one month, three months, six months, one year, three years, and all time
+- **Master Calendar** — scan the current month and previous five months at a glance, then jump from any recent match directly to its Match History row
 - **Export as image** — save any match or individual stage as a PNG card (floppy-disk button on each match row)
 - **Export as CSV** — download all chart-visible data as a flat CSV (one row per stage) including CM numbers, USPSA %, HF, hit counts, adjusted %, and the selected reference division, class, HF, normalized HF, and benchmark method
 - **Light/dark theme** — defaults to light mode; toggle in the header; preference syncs across devices via Chrome storage
@@ -120,6 +121,10 @@ Summaries appear automatically once enough data is loaded. Classifier trend requ
 ### Filtering by date
 
 Analytics open on the most recent **6 mo** so trends stay readable. Use the buttons above the charts to switch to **Last 1 month**, **3 mo**, **6 mo**, **1 yr**, **3 yr**, or **all time**. The active range applies to every chart, summary statistic, classifier-only view, and chart CSV export without re-fetching or deleting older Match History records.
+
+### Using the Master Calendar
+
+The **Master Calendar** always shows six chronological month blocks: the current month and the previous five months. It follows the current division, view, and match selections but stays independent from the graph date preset. Select any calendar entry to jump to that match in Match History; older records remain cached and available there.
 
 ### Exporting data
 

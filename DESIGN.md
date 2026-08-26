@@ -10,6 +10,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Sections provide their own horizontal gutters: 24–28px on desktop and 16px at widths up to 640px.
 - Charts fill their section width and redraw from their rendered width after a browser resize.
 - Summary cards and controls wrap rather than forcing page-level horizontal scrolling.
+- At narrow widths, Match History rows wrap metadata and keep refresh, export, and delete actions visibly keyboard-accessible.
 - Wide layouts should use the available charting space; constrain individual text or control elements only when readability requires it.
 - Stage tables may scroll within their existing panel on narrow screens, but the page itself must not acquire unintended horizontal overflow.
 
@@ -26,3 +27,11 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Activate **6 mo** on every dashboard load. Exactly one preset must expose a visible active state and `aria-pressed="true"`.
 - Use compact native buttons with a clear keyboard focus ring. The group wraps at narrow widths rather than becoming a dropdown or creating horizontal page overflow.
 - Date-range changes update the existing cached analytics immediately. They do not hide or delete older Match History records.
+
+## Master Calendar
+
+- Show exactly six chronological calendar-month blocks: the current month and the previous five months. Keep this window independent from the graph date preset.
+- Use three columns on wide screens, two on medium screens, and one at widths up to 640px. Day cells and match entries must remain inside their month block without page-level overflow.
+- Display the match name plus division and score when space allows. Preserve the full date, identity, division, and score in each entry's accessible name.
+- Calendar entries are native buttons that move keyboard focus to the corresponding Match History row. The destination receives a short, restrained highlight.
+- Empty months retain their complete calendar grid. If the whole window is empty, state that clearly without hiding the month blocks.
