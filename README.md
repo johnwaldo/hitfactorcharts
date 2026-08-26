@@ -111,10 +111,10 @@ Use the **All Divisions** dropdown before the USPSA member-number field to focus
 
 Below the Score Over Time and Placement charts, plain-English summaries show:
 
-- **Score trend** — your last 3 matches averaged vs your prior baseline, with direction
+- **Score trend** — your last 3 matches averaged vs your prior baseline; **Stable** means the change is within ±1.0 percentage point
 - **Adjusted % context** — whether your adjusted average runs above or below your raw division average, and what that means about field strength
-- **Placement** — your average finishing percentile in your division, with trend
-- **Classifier trend** — your recent classifier average vs prior, using the national HHF reference (the only stage-level metric that is directly comparable across different matches and courses)
+- **Placement** — your average finishing percentile in your division, with recent-vs-prior changes measured in percentage points; **Stable** means within ±1.0 point
+- **Classifier trend** — your recent classifier average vs prior; **Stable** means within ±1.5 points, using the national HHF reference (the only stage-level metric that is directly comparable across different matches and courses)
 
 Summaries appear automatically once enough data is loaded. Classifier trend requires at least 6 classifier stages.
 

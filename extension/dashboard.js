@@ -1674,11 +1674,13 @@ function _avg(arr) {
   return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
 }
 
-// Trend label HTML for a delta value, with a ±threshold for "stable".
+// Trend label HTML for a percentage-point delta, with an inclusive ±threshold for "stable".
 function _trendLabel(delta, threshold = 1.0) {
   if (delta >  threshold) return `<span class="s-up">↑ improving</span>`;
   if (delta < -threshold) return `<span class="s-down">↓ declining</span>`;
-  return `<span class="s-flat">→ stable</span>`;
+  const unit = threshold === 1 ? 'percentage point' : 'percentage points';
+  return `<span class="s-flat">→ stable</span> ` +
+    `<span class="s-note">(within ±${threshold.toFixed(1)} ${unit} of baseline)</span>`;
 }
 
 function generateSummaries(viewSorted) {
@@ -1701,7 +1703,7 @@ function generateSummaries(viewSorted) {
       scoreEl.innerHTML =
         `Last 3 matches: <span class="s-val">${recentAvg.toFixed(1)}%</span> ` +
         `vs prior baseline <span class="s-val">${priorAvg.toFixed(1)}%</span> ` +
-        `— ${sign}${delta.toFixed(1)}% ${_trendLabel(delta)}`;
+        `— ${sign}${delta.toFixed(1)} pp ${_trendLabel(delta)}`;
       scoreEl.style.display = '';
     } else {
       scoreEl.style.display = 'none';
@@ -1751,10 +1753,13 @@ function generateSummaries(viewSorted) {
       let trendStr    = '';
       if (placeData.length >= 4) {
         // Lower percentile ratio = higher in the field = better
-        const recentPct = _avg(pcts.slice(-3));
-        const priorPct  = _avg(pcts.slice(0, -3));
-        const delta     = recentPct - priorPct; // negative = moved up = improving
-        trendStr        = ' ' + _trendLabel(-delta); // flip sign: lower ratio is better
+        const recentPct = _avg(pcts.slice(-3)) * 100;
+        const priorPct  = _avg(pcts.slice(0, -3)) * 100;
+        const delta     = priorPct - recentPct; // positive = moved up = improving
+        const sign      = delta >= 0 ? '+' : '';
+        trendStr        = ` Recent: top <span class="s-val">${recentPct.toFixed(1)}%</span> ` +
+          `vs prior top <span class="s-val">${priorPct.toFixed(1)}%</span> ` +
+          `— ${sign}${delta.toFixed(1)} pp ${_trendLabel(delta)}.`;
       }
       placeEl.innerHTML =
         `Finishing in the top <span class="s-val">${topPct}%</span> of your division on average.${trendStr}`;
@@ -1785,7 +1790,7 @@ function generateSummaries(viewSorted) {
       clfEl.innerHTML =
         `Last ${N} classifiers: <span class="s-val">${recentAvg.toFixed(1)}%</span> ` +
         `vs prior <span class="s-val">${priorAvg.toFixed(1)}%</span> ` +
-        `— ${sign}${delta.toFixed(1)}% ${_trendLabel(delta, 1.5)} ` +
+        `— ${sign}${delta.toFixed(1)} pp ${_trendLabel(delta, 1.5)} ` +
         `<span class="s-note">(national HHF reference — directly comparable across matches)</span>`;
       clfEl.style.display = '';
     } else if (clfStages.length >= 2) {
@@ -2783,6 +2788,62 @@ function formatAge(ts) {
 const PAD        = { top: 24, right: 52, bottom: 44, left: 48 };
 const FONT       = '11px Inter, system-ui, sans-serif';
 
+function selectAxisTickIndices(labels, positions, measureText, minGap = 10) {
+  if (!labels.length || labels.length !== positions.length) return [];
+
+  const widths = labels.map(label => measureText(label));
+  const selected = [0];
+  const selectedLabels = new Set([labels[0]]);
+  let lastRight = positions[0] + widths[0] / 2;
+
+  for (let index = 1; index < labels.length - 1; index++) {
+    if (selectedLabels.has(labels[index])) continue;
+    const left = positions[index] - widths[index] / 2;
+    if (left < lastRight + minGap) continue;
+    selected.push(index);
+    selectedLabels.add(labels[index]);
+    lastRight = positions[index] + widths[index] / 2;
+  }
+
+  if (labels.length === 1) return selected;
+
+  const finalIndex = labels.length - 1;
+  const finalLeft = positions[finalIndex] - widths[finalIndex] / 2;
+  while (selected.length > 1) {
+    const priorIndex = selected[selected.length - 1];
+    const priorRight = positions[priorIndex] + widths[priorIndex] / 2;
+    if (finalLeft >= priorRight + minGap) break;
+    selected.pop();
+    selectedLabels.delete(labels[priorIndex]);
+  }
+
+  const firstRight = positions[selected[0]] + widths[selected[0]] / 2;
+  if (!selectedLabels.has(labels[finalIndex]) &&
+      finalLeft >= firstRight + minGap) {
+    selected.push(finalIndex);
+  }
+
+  return selected;
+}
+
+function formatAxisDateLabels(dates) {
+  const distinctDatesByShortLabel = new Map();
+  dates.forEach(date => {
+    if (!date) return;
+    const shortLabel = date.substring(5);
+    if (!distinctDatesByShortLabel.has(shortLabel)) {
+      distinctDatesByShortLabel.set(shortLabel, new Set());
+    }
+    distinctDatesByShortLabel.get(shortLabel).add(date);
+  });
+
+  return dates.map((date, index) => {
+    if (!date) return `#${index + 1}`;
+    const shortLabel = date.substring(5);
+    return distinctDatesByShortLabel.get(shortLabel).size > 1 ? date : shortLabel;
+  });
+}
+
 // Read CSS custom properties for canvas drawing (canvas doesn't support var())
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -2952,11 +3013,12 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
   ctx.fillText(yLabel, 0, 0); ctx.restore();
 
   // X date labels
-  const step = Math.ceil(allDates.length / 8);
   ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
-  allDates.forEach((d, i) => {
-    if (i % step !== 0 && i !== allDates.length - 1) return;
-    ctx.fillText(d.substring(5), dateToCanvasX(d), area.y0 + area.h + 14); // MM-DD
+  const dateLabels = formatAxisDateLabels(allDates);
+  const datePositions = allDates.map(dateToCanvasX);
+  selectAxisTickIndices(dateLabels, datePositions, label => ctx.measureText(label).width)
+    .forEach(index => {
+      ctx.fillText(dateLabels[index], datePositions[index], area.y0 + area.h + 14);
   });
 
   // Legend (if multiple series)
@@ -3184,12 +3246,12 @@ function drawLineChart(canvas, points, opts = {}) {
   });
 
   // X labels (MM-DD)
-  const step = Math.ceil(points.length / 8);
   ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
-  points.forEach((p, i) => {
-    if (i % step !== 0 && i !== points.length - 1) return;
-    const lbl = p.date ? p.date.substring(5) : `#${i+1}`;
-    ctx.fillText(lbl, toX(i), area.y0 + area.h + 14);
+  const pointLabels = formatAxisDateLabels(points.map(point => point.date));
+  const pointPositions = points.map((_, index) => toX(index));
+  selectAxisTickIndices(pointLabels, pointPositions, label => ctx.measureText(label).width)
+    .forEach(index => {
+      ctx.fillText(pointLabels[index], pointPositions[index], area.y0 + area.h + 14);
   });
 
   // Interactive tooltip
@@ -3291,13 +3353,15 @@ function drawStackedBarChart(canvas, bars) {
 
     hitMap.push({ cx, cy: area.y0 + area.h / 2, bar });
 
-    // X label
-    if (n <= 12 || i % Math.ceil(n / 8) === 0 || i === n - 1) {
-      ctx.fillStyle = TEXT_COLOR();
-      ctx.font = FONT;
-      ctx.textAlign = 'center';
-      ctx.fillText(bar.date ? bar.date.substring(5) : `#${i + 1}`, cx, area.y0 + area.h + 14);
-    }
+  });
+
+  // X labels
+  ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
+  const barLabels = formatAxisDateLabels(bars.map(bar => bar.date));
+  const barPositions = bars.map((_, index) => area.x0 + gap * index + gap / 2);
+  selectAxisTickIndices(barLabels, barPositions, label => ctx.measureText(label).width)
+    .forEach(index => {
+      ctx.fillText(barLabels[index], barPositions[index], area.y0 + area.h + 14);
   });
 
   // Y axis — 0/25/50/75/100%
