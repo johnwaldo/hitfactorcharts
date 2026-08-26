@@ -4,6 +4,16 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+### Added
+
+- Six immediately visible graph range presets now cover the last month, three months, six months, one year, three years, and all time. Analytics default to six months while older cached matches remain available.
+- A responsive Master Calendar now shows the current month and previous five months, with accessible entries that jump directly to the corresponding Match History row.
+
+### Changed
+
+- The dashboard now uses the full browser width, redraws charts to their rendered container size, and keeps compact gutters across desktop and narrow layouts.
+- Match History actions now wrap and remain visible on narrow screens without causing horizontal page overflow.
+
 ## v1.6.4 — 2026-08-26
 
 ### Added
