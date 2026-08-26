@@ -14,7 +14,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 
 ## Features
 
-- **Score over time** — match percentage plotted chronologically with USPSA classification bands (GM / M / A / B / C / D); Y-axis warped so higher classes get proportional visual space
+- **Score over time** — raw Division % and field-strength Adjusted % plotted chronologically on a readable linear scale
 - **Placement chart** — finish position at each match, normalized to field size
 - **Per-stage breakdown** — expand any match row to see hits, HF, and percentage for every stage; classifier stages show official USPSA % (vs national reference HF) as the primary number; individual stages can be excluded from ratings with an optional note
 - **Division-aware filtering** — automatically detects which division you shot in each match; a persistent selector filters every chart, statistic, classification, history row, and CSV export to one division
@@ -42,7 +42,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 
 **Adjusted %** is a field-strength correction for non-classifier stages. For each stage, the extension takes the top hit factor from every represented division, translates each result to your division's equivalent using national HHF ratios from [hitfactor.info](https://hitfactor.info), and uses the strongest normalized result as the reference. Your own division participates without conversion, so the adjusted score remains between 0% and 100% while correcting for divisions with stronger competitors.
 
-A 75% adjusted score means you performed at solid A-class level against the strongest actual stage result at that match after accounting for division equipment differences. Adjusted % is the better indicator of improvement over time because it accounts for the complete match field, not just your division draw. Classifier stages are excluded because official classifier percentages are already normalized against USPSA national division data.
+A 75% adjusted score means your performance was 75% of the strongest normalized stage result at that match after accounting for division equipment differences. Adjusted % is the better indicator of improvement over time because it accounts for the complete match field, not just your division draw. It is still a match-relative estimate, not an official USPSA classification percentage. Classifier stages are excluded because official classifier percentages are already normalized against USPSA national division data; use **Classifiers Only** to see that official class context.
 
 ---
 
