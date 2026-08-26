@@ -1370,11 +1370,17 @@ function renderAll() {
 
     const allClfDates = [...new Set(clfPoints.map(p => p.date))].sort();
 
+    const allClassifierScoresOfficial = clfPoints.every(point => point.isOfficial);
     document.getElementById('chartTimeTitle').textContent = 'Classifier Scores Over Time'
-      + (officialPcts.length ? ' (official %)' : ' (match % — log in to USPSA.org for official %)');
+      + (allClassifierScoresOfficial
+        ? ' (official %)'
+        : officialPcts.length
+        ? ' (official and match-relative %)'
+        : ' (match % — log in to USPSA.org for official %)');
     drawMultiSeriesChart(document.getElementById('chartTime'), series, allClfDates, {
-      yLabel: 'Classifier %', yMin: 0, yMax: 100, invertY: false, trend: series.length === 1, valueUnit: '%',
-      showClassBands: true,
+      yLabel: 'Classifier %', yMin: 0, yMax: 100, invertY: false,
+      trend: series.length === 1, valueUnit: 'classifier%',
+      showClassBands: allClassifierScoresOfficial,
     });
     setPlacementVisible(false);
     return;
@@ -1409,16 +1415,16 @@ function renderAll() {
       const avgY = ys.length ? ys.reduce((s, v) => s + v, 0) / ys.length : null;
       if (group.length === 1) {
         const r = group[0];
-        return { date, y: avgY, label: r.match_name, division: r.division, class_: r.class_,
+        return { date, y: avgY, label: r.match_name, division: r.division,
           overall_pct: effectiveOverallPct(r), div_pct: effectiveDivPct(r),
           place: r.div_place ?? r.place, total: r.div_total ?? r.total,
           foundBy: r.found_by, stages: getMetricStages(r) };
       }
       return { date, y: avgY, label: `${group.length} matches`, multiMatch: group.map(r => ({
         label: r.match_name, y: effectiveDivPct(r), overall_pct: effectiveOverallPct(r),
-        division: r.division, class_: r.class_,
+        division: r.division,
         place: r.div_place ?? r.place, total: r.div_total ?? r.total, foundBy: r.found_by,
-      })), division: group[0].division, class_: group[0].class_, overall_pct: avgY };
+      })), division: group[0].division, overall_pct: avgY };
     });
     return { label: div, color: DIV_PALETTE[i % DIV_PALETTE.length], points };
   });
@@ -1434,7 +1440,7 @@ function renderAll() {
     const adjAvg = adjStages.reduce((sum, a) => sum + a.adjPct, 0) / adjStages.length;
     adjPoints.push({
       date: r.date, y: adjAvg, label: r.match_name,
-      division: r.division, class_: classLetterForPct(adjAvg),
+      division: r.division,
       overall_pct: effectiveOverallPct(r),
     });
   }
@@ -1450,8 +1456,8 @@ function renderAll() {
   }
 
   drawMultiSeriesChart(document.getElementById('chartTime'), scoreSeries, allDates, {
-    yLabel: 'Division %', yMin: 0, yMax: 100, invertY: false, trend: scoreSeries.length <= 2, valueUnit: '%',
-    showClassBands: true,
+    yLabel: 'Match performance %', yMin: 0, yMax: 100, invertY: false,
+    trend: scoreSeries.length <= 2, valueUnit: 'match%',
   });
 
   const placeSeries = Object.entries(byDiv).map(([div, matches], i) => {
@@ -3106,6 +3112,10 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
             return `<div class="tt-stage-row"><span class="tt-stage-name">${escHtml(m.label)}</span>`
               + `<span style="color:${c}">${m.y != null ? m.y.toFixed(1) + '%' + (b ? ' ' + b.label : '') : '—'}</span></div>`;
           }
+          if (unit === 'match%') {
+            return `<div class="tt-stage-row"><span class="tt-stage-name">${escHtml(m.label)}</span>`
+              + `<span style="color:#8a9bb0">${m.y != null ? m.y.toFixed(1) + '%' : '—'}</span></div>`;
+          }
           return `<div class="tt-stage-row"><span class="tt-stage-name">${escHtml(m.label)}</span>`
             + `<span style="color:#8a9bb0">${m.rawPlace}/${m.total} (beat ${m.y.toFixed(1)}%)</span></div>`;
         }).join('') : '';
@@ -3115,6 +3125,8 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
           const classLabel = classBand ? ` <span style="color:${classBand.text};font-size:10px">${classBand.label}</span>` : '';
           const avgLine = unit === '%'
             ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}%${classLabel} <span style="font-size:11px;color:#666">avg (div)</span></div>`
+            : unit === 'match%'
+            ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}% <span style="font-size:11px;color:#aab3c2">average match score</span></div>`
             : `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}% <span style="font-size:11px;color:#666">avg beaten</span></div>`;
           tooltipEl.innerHTML = `
             <div class="tt-name">${escHtml(h.label)}</div>
@@ -3123,11 +3135,16 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
             <div class="tt-stages">${multiMatchRows}</div>
           `;
         } else {
-          const classBand = unit === '%' ? bandForPct(h.y) : null;
+          const hasOfficialClassContext = unit === '%' || (unit === 'classifier%' && h.isOfficial);
+          const classBand = hasOfficialClassContext ? bandForPct(h.y) : null;
           const classLabel = classBand
             ? `<span style="color:${classBand.text};font-size:10px;margin-left:6px">${classBand.label}</span>` : '';
           const mainVal = unit === '%'
             ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}%${classLabel} <span style="font-size:11px;color:#666">(div)</span></div>`
+            : unit === 'classifier%'
+            ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}%${classLabel} <span style="font-size:11px;color:#aab3c2">${h.isOfficial ? 'official USPSA' : 'match-relative'}</span></div>`
+            : unit === 'match%'
+            ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}% <span style="font-size:11px;color:#aab3c2">match performance</span></div>`
             : unit === 'top%'
             ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}% <span style="font-size:11px;color:#aab3c2">compared with top shooter</span></div>`
             : unit === 'place%'
@@ -3135,7 +3152,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
             : `<div class="tt-score" style="color:${h.color}">Place ${h.y}${h.total ? ' / ' + h.total : ''}</div>`;
           const divLine = (h.division || h.class_)
             ? `<div class="tt-meta">${escHtml([h.division, h.class_].filter(Boolean).join(' / '))}</div>` : '';
-          const overallLine = (unit === '%' && h.overall_pct != null && Math.abs(h.overall_pct - h.y) > 0.1)
+          const overallLine = ((unit === '%' || unit === 'match%') && h.overall_pct != null && Math.abs(h.overall_pct - h.y) > 0.1)
             ? `<div class="tt-meta">${h.overall_pct.toFixed(1)}% overall</div>` : '';
           const pctLine = (unit === '' && h.overall_pct != null)
             ? `<div class="tt-meta">${h.overall_pct.toFixed(1)}% score</div>` : '';
