@@ -218,8 +218,7 @@ let currentView      = 'ranked'; // 'ranked' | 'all'
 let deselectedMatches = new Set(); // match IDs manually excluded from charts
 let stageOverrides    = {};     // match_id -> stage key -> { included: false, note: string }
 let selectedDiv       = null;     // canonical division key (null = All)
-let selectedYear      = null;     // year filter for charts (null = All Time)
-let selectedDateRange = null;    // custom range { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' } or null
+let selectedDatePreset = '6m';   // analytics range; resets to six months on dashboard load
 let classificationData = null;  // data from uspsa.org/classification/[memberNumber]
 let classifiersOnly  = false;   // when true, charts show only classifier stage scores
 
@@ -863,87 +862,76 @@ fetchBtn.addEventListener('click', async () => {
   }
 });
 
-// ── Year filter pills ─────────────────────────────────────────────────────────
-// ── Year / date-range filter pill ────────────────────────────────────────────
-function renderYearFilter(years) {
-  const el = document.getElementById('timeFilter');
-  el.innerHTML = '';
-  if (years.length === 0) { el.style.display = 'none'; return; }
-  el.style.display = 'flex';
+// ── Analytics date-range presets ──────────────────────────────────────────────
+const DATE_RANGE_PRESETS = Object.freeze({
+  '1m':  { label: 'Last 1 month', months: 1,  fileTag: 'last 1 month' },
+  '3m':  { label: '3 mo',         months: 3,  fileTag: 'last 3 months' },
+  '6m':  { label: '6 mo',         months: 6,  fileTag: 'last 6 months' },
+  '1y':  { label: '1 yr',         months: 12, fileTag: 'last 1 year' },
+  '3y':  { label: '3 yr',         months: 36, fileTag: 'last 3 years' },
+  'all': { label: 'all time',     months: null, fileTag: 'all time' },
+});
 
-  const isCustom = !!selectedDateRange;
-  const label    = isCustom
-    ? `${selectedDateRange.start} – ${selectedDateRange.end}`
-    : selectedYear || 'All Time';
-
-  const pill = document.createElement('button');
-  pill.className = 'time-btn' + (selectedYear || isCustom ? ' active' : '');
-  pill.textContent = label;
-
-  pill.onclick = (e) => {
-    e.stopPropagation();
-    const existing = el.querySelector('.div-dropdown');
-    if (existing) { existing.remove(); return; }
-
-    const dropdown = document.createElement('div');
-    dropdown.className = 'div-dropdown';
-
-    // Standard year options
-    ['All Time', ...years].forEach(y => {
-      const item = document.createElement('div');
-      item.className = 'div-dropdown-item' +
-        ((y === 'All Time' && !selectedYear && !isCustom) || y === selectedYear ? ' selected' : '');
-      item.textContent = y;
-      item.onclick = (ev) => {
-        ev.stopPropagation();
-        selectedYear = y === 'All Time' ? null : y;
-        selectedDateRange = null;
-        dropdown.remove();
-        renderAll();
-      };
-      dropdown.appendChild(item);
-    });
-
-    // Custom range entry
-    const customItem = document.createElement('div');
-    customItem.className = 'div-dropdown-item' + (isCustom ? ' selected' : '');
-    customItem.textContent = 'Custom Range…';
-    customItem.onclick = (ev) => {
-      ev.stopPropagation();
-      if (dropdown.querySelector('.date-range-form')) return;
-      const form = document.createElement('div');
-      form.className = 'date-range-form';
-      form.innerHTML = `
-        <label>From</label>
-        <input type="date" class="dr-from" value="${selectedDateRange?.start || ''}">
-        <label>To</label>
-        <input type="date" class="dr-to"   value="${selectedDateRange?.end   || ''}">
-        <button class="dr-apply">Apply</button>
-      `;
-      form.addEventListener('click', ev2 => ev2.stopPropagation());
-      form.querySelector('.dr-apply').onclick = () => {
-        const start = form.querySelector('.dr-from').value;
-        const end   = form.querySelector('.dr-to').value;
-        if (start && end && start <= end) {
-          selectedDateRange = { start, end };
-          selectedYear = null;
-          dropdown.remove();
-          renderAll();
-        }
-      };
-      dropdown.appendChild(form);
-    };
-    dropdown.appendChild(customItem);
-
-    el.appendChild(dropdown);
-    setTimeout(() => document.addEventListener('click', function close() {
-      dropdown.remove();
-      document.removeEventListener('click', close);
-    }, { once: true }), 0);
-  };
-
-  el.appendChild(pill);
+function normalizeDateOnly(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(String(value || ''));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return `${match[1]}-${match[2]}-${match[3]}`;
 }
+
+function localDateOnly(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function subtractCalendarMonths(dateOnly, months) {
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  const monthIndex = month - 1 - months;
+  const targetYear = year + Math.floor(monthIndex / 12);
+  const targetMonth = ((monthIndex % 12) + 12) % 12;
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  return localDateOnly(new Date(targetYear, targetMonth, Math.min(day, lastDay)));
+}
+
+function activeDateBounds(referenceDate = new Date()) {
+  const preset = DATE_RANGE_PRESETS[selectedDatePreset] || DATE_RANGE_PRESETS['6m'];
+  if (preset.months == null) return null;
+  const end = localDateOnly(referenceDate);
+  return { start: subtractCalendarMonths(end, preset.months), end };
+}
+
+function filterByActiveDateRange(records, referenceDate = new Date()) {
+  const bounds = activeDateBounds(referenceDate);
+  return records.filter(record => {
+    const date = normalizeDateOnly(record.date);
+    if (!date) return false;
+    return !bounds || (date >= bounds.start && date <= bounds.end);
+  });
+}
+
+function renderDateRangeFilter() {
+  document.querySelectorAll('[data-date-preset]').forEach(button => {
+    const active = button.dataset.datePreset === selectedDatePreset;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+document.querySelectorAll('[data-date-preset]').forEach(button => {
+  button.addEventListener('click', () => {
+    if (!DATE_RANGE_PRESETS[button.dataset.datePreset]) return;
+    selectedDatePreset = button.dataset.datePreset;
+    renderDateRangeFilter();
+    renderAll();
+  });
+});
+renderDateRangeFilter();
 
 // ── Render charts + stats ─────────────────────────────────────────────────────
 function setPlacementVisible(visible) {
@@ -958,6 +946,7 @@ function setPlacementVisible(visible) {
 }
 
 function renderAll() {
+  renderDateRangeFilter();
   if (!allResults.length) return;
 
   // Level 2 filter: only chart USPSA/Hit Factor matches (excludes time-scored sports)
@@ -978,8 +967,6 @@ function renderAll() {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
   });
-
-  const placeData = sorted.filter(r => r.place != null);
 
   summaryBar.classList.add('visible');
   chartsEl.classList.add('visible');
@@ -1010,19 +997,11 @@ function renderAll() {
     ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
       .forEach(id => { document.getElementById(id).style.display = 'none'; });
     renderClassBox(selectedDiv);
-    renderYearFilter([]);
     return;
   }
 
-  // Validate the time filter against the active division without changing division preference.
-  const years = [...new Set(sorted.map(r => r.date?.slice(0, 4)).filter(Boolean))].sort();
-  if (selectedYear && !years.includes(selectedYear)) selectedYear = null;
-
-  // Filter to selected year/range for stats + charts. Division is applied above.
-  const viewSorted = sorted.filter(r =>
-    (!selectedYear      || r.date?.startsWith(selectedYear)) &&
-    (!selectedDateRange || (r.date >= selectedDateRange.start && r.date <= selectedDateRange.end))
-  );
+  // Apply one shared range to stats, every chart, summaries, classifier mode, and CSV export.
+  const viewSorted = filterByActiveDateRange(sorted);
 
   if (viewSorted.length === 0) {
     const msg = selectedDiv
@@ -1048,7 +1027,6 @@ function renderAll() {
     ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
       .forEach(id => { document.getElementById(id).style.display = 'none'; });
     renderClassBox(selectedDiv);
-    renderYearFilter(years);
     return;
   }
 
@@ -1149,9 +1127,6 @@ function renderAll() {
   } else {
     divStatVal.textContent = '—';
   }
-
-  // Year filter pills
-  renderYearFilter(years);
 
   // Official classification stat box (D-GM class from USPSA.org)
   renderClassBox(selectedDiv || (divs.length === 1 ? normalizeDivision(divs[0]) : null));
@@ -2555,7 +2530,7 @@ function exportStageCard(match, stage) {
 
 // ── CSV Export ────────────────────────────────────────────────────────────────
 // Exports chart-visible match data as a flat CSV (one row per stage).
-// Respects the active division / year / custom date-range filter.
+// Respects the active division and date-range preset.
 // Includes USPSA clf_pct when available (official % vs national reference HF).
 function exportChartCSV() {
   const uspsaBase = allResults.filter(r => isChartable(r) && !deselectedMatches.has(r.match_id));
@@ -2566,10 +2541,7 @@ function exportChartCSV() {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
   });
-  const viewSorted = sorted.filter(r =>
-    (!selectedYear      || r.date?.startsWith(selectedYear)) &&
-    (!selectedDateRange || (r.date >= selectedDateRange.start && r.date <= selectedDateRange.end))
-  );
+  const viewSorted = filterByActiveDateRange(sorted);
 
   // Flat format: one row per stage (match-level fields repeated).
   // In classifiersOnly mode, only classifier stages are included.
@@ -2629,9 +2601,7 @@ function exportChartCSV() {
   }
 
   const csv      = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const dateTag  = selectedDateRange
-    ? `${selectedDateRange.start} to ${selectedDateRange.end}`
-    : selectedYear || 'all time';
+  const dateTag  = (DATE_RANGE_PRESETS[selectedDatePreset] || DATE_RANGE_PRESETS['6m']).fileTag;
   const divisionTag = selectedDiv ? ` ${divisionLabel(selectedDiv)}` : '';
   const filename = (classifiersOnly ? 'hfc_classifiers' : 'hfc_scores') + `${divisionTag} ${dateTag}.csv`;
   const blob     = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

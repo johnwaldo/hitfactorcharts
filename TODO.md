@@ -5,8 +5,8 @@
 - [x] t003 build.sh: version tag passed as argument creates a misnamed ZIP (pscharts-v1.0-patch.zip instead of pscharts-v1.0.1.zip) — fix to derive patch version from manifest or accept full semver as argument
 - [ ] t004 Unknown match type detection — consider prompting user to manually classify unconfirmed-type matches rather than silently showing them as "unconfirmed type"
 - [x] t005 Image export — per-match and per-stage PNG export via Canvas (match card + stage card); upstream v1.0–v1.1 feature; floppy-disk button on each match row with dropdown for full match or individual stages pr:#12
-- [x] t006 CSV export — flat per-stage CSV of all chart-visible match data including USPSA %, HF, hit counts, CM info; respects active division/year/date filters; "⤓ CSV" button in chart section header pr:#12
-- [x] t007 Custom date range filter — "Custom Range…" option in year dropdown with from/to date pickers; state: selectedDateRange {start, end}; applied in renderAll() and exportChartCSV(); upstream v1.0 feature pr:#12
+- [x] t006 CSV export — flat per-stage CSV of all chart-visible match data including USPSA %, HF, hit counts, CM info; respects active division and date-range presets; "⤓ CSV" button in chart section header pr:#12
+- [x] t007 Custom date range filter — shipped in v1.0 via pr:#12; superseded by the six immediately visible analytics presets in #31
 - [x] t008 Class-band Y-axis warp — buildWarpMap()/warpPct() for weighted Y-axis on score-over-time chart so each class band gets proportional visual height rather than linear % scale; upstream v0.8-beta feature pr:#12
 - [x] t009 clf_pct in stage table — when a stage is a known classifier and clf_pct is available, show official USPSA % as primary with match % as small secondary; one-line template change in renderMatchList(); upstream v0.9 feature pr:#12
 - [x] t010 normalizeStgName() + background.js regex fix — strip "Stage N:" prefix from cached stage names; tighten stage regex separator from required to optional (/[:\-–]?\s*/i); upstream v1.0/v1.1 fix pr:#12

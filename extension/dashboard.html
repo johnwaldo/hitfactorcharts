@@ -223,37 +223,16 @@
     .div-dropdown-item:hover { background: #2a2d3a; }
     .div-dropdown-item.selected { color: #4a9eff; }
     #timeFilter {
-      display: none; gap: 6px; padding: 0 24px 14px; flex-wrap: wrap;
-      position: relative;
+      display: flex; gap: 6px; padding: 0 24px 14px; flex-wrap: wrap;
     }
     .time-btn {
-      padding: 4px 12px; border-radius: 6px; font-size: 12px;
+      padding: 6px 12px; border-radius: 6px; font-size: 12px;
       border: 1px solid #2a2d3a; background: #1a1d27; color: #888;
       cursor: pointer; user-select: none;
     }
     .time-btn:hover { border-color: #4a9eff; color: #ccc; }
     .time-btn.active { background: #1e3a5f; border-color: #4a9eff; color: #4a9eff; }
-
-    .date-range-form {
-      padding: 8px 14px 12px;
-      border-top: 1px solid #2a2d3a;
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-    .date-range-form label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.4px; }
-    .date-range-form input[type="date"] {
-      background: #131620; border: 1px solid #2a2d3a; border-radius: 4px;
-      color: #ccc; font-size: 12px; padding: 4px 8px; width: 100%;
-      color-scheme: dark;
-    }
-    .date-range-form input[type="date"]:focus { outline: none; border-color: #4a9eff; }
-    .date-range-form .dr-apply {
-      margin-top: 4px; padding: 5px 12px; align-self: flex-end;
-      border-radius: 4px; border: 1px solid #4a9eff;
-      background: none; color: #4a9eff; font-size: 12px; cursor: pointer;
-    }
-    .date-range-form .dr-apply:hover { background: #1e3a5f; }
+    .time-btn:focus-visible { outline: 2px solid #4a9eff; outline-offset: 2px; }
 
     #viewToggle { display: flex; flex-direction: row; gap: 8px; width: 100%; }
     .view-btn {
@@ -1108,13 +1087,6 @@
     [data-theme="light"] .chart-summary .s-val { color: #1a1d27; }
     [data-theme="light"] #exportCsvBtn { color: #8a9bb0; border-color: #d0d4dc; }
     [data-theme="light"] #exportCsvBtn:hover { color: #16a34a; border-color: #16a34a; }
-    [data-theme="light"] .date-range-form { border-top-color: #e0e2e8; }
-    [data-theme="light"] .date-range-form input[type="date"] {
-      background: #ffffff;
-      border-color: #c0c4cc;
-      color: #2c3040;
-      color-scheme: light;
-    }
     [data-theme="light"] .match-list-header { border-bottom-color: #e0e2e8; color: #5a6478; }
     [data-theme="light"] .match-row {
       background: #ffffff;
@@ -1310,7 +1282,14 @@
 </div>
 
 
-<div id="timeFilter"></div>
+<div id="timeFilter" role="group" aria-label="Analytics date range">
+  <button class="time-btn" type="button" data-date-preset="1m" aria-pressed="false">Last 1 month</button>
+  <button class="time-btn" type="button" data-date-preset="3m" aria-pressed="false">3 mo</button>
+  <button class="time-btn active" type="button" data-date-preset="6m" aria-pressed="true">6 mo</button>
+  <button class="time-btn" type="button" data-date-preset="1y" aria-pressed="false">1 yr</button>
+  <button class="time-btn" type="button" data-date-preset="3y" aria-pressed="false">3 yr</button>
+  <button class="time-btn" type="button" data-date-preset="all" aria-pressed="false">all time</button>
+</div>
 
 <div id="charts">
   <div class="chart-section">
