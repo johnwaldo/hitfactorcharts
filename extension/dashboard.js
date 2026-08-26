@@ -988,8 +988,11 @@ function renderAll() {
     document.getElementById('statDiv').textContent     = selectedDiv ? divisionLabel(selectedDiv) : '—';
     document.getElementById('statConsistencyBox').style.display = 'none';
     document.getElementById('statAdjAvgBox').style.display = 'none';
-    document.getElementById('chartTimeTitle').textContent = 'Score Over Time';
-    setPlacementVisible(true);
+    document.getElementById('chartTimeTitle').textContent = classifiersOnly
+      ? 'Classifier Scores Over Time'
+      : 'Score Over Time';
+    document.getElementById('chartPlaceSubtitle').textContent = '';
+    setPlacementVisible(!classifiersOnly);
     ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
       .forEach(id => { document.getElementById(id).style.display = 'none'; });
     ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
@@ -1018,9 +1021,19 @@ function renderAll() {
     document.getElementById('statMatches').textContent = '0';
     document.getElementById('statAvg').textContent = '—';
     document.getElementById('statBest').textContent = '—';
+    document.getElementById('statDiv').textContent = selectedDiv
+      ? divisionLabel(selectedDiv)
+      : (divs.length === 1 ? divisionLabel(divs[0]) : 'All');
     document.getElementById('statConsistencyBox').style.display = 'none';
     document.getElementById('statAdjAvgBox').style.display = 'none';
+    document.getElementById('chartTimeTitle').textContent = classifiersOnly
+      ? 'Classifier Scores Over Time'
+      : 'Score Over Time';
+    document.getElementById('chartPlaceSubtitle').textContent = '';
+    setPlacementVisible(!classifiersOnly);
     ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
       .forEach(id => { document.getElementById(id).style.display = 'none'; });
     renderClassBox(selectedDiv);
     renderYearFilter(years);
@@ -1168,6 +1181,9 @@ function renderAll() {
     // Classifier-only mode never displays the normal analysis charts.
     ['chartNonClfSection','chartClfOverlaySection','chartAccuracySection','chartHitZoneSection']
       .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    document.getElementById('chartPlaceSubtitle').textContent = '';
 
     if (clfPoints.length === 0) {
       document.getElementById('statMatches').textContent = '0';
