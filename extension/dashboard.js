@@ -1175,6 +1175,14 @@ function setPlacementVisible(visible) {
   }
 }
 
+function resetSecondaryAnalysis() {
+  ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
+    .forEach(id => { document.getElementById(id).style.display = 'none'; });
+  ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
+    .forEach(id => { document.getElementById(id).style.display = 'none'; });
+  document.getElementById('chartPlaceSubtitle').textContent = '';
+}
+
 function renderAll() {
   renderDateRangeFilter();
   if (!allResults.length) {
@@ -1211,12 +1219,8 @@ function renderAll() {
       : currentView === 'ranked'
       ? 'No member-number confirmed scores.\nSwitch to "All Matches" to see name-matched results.'
       : 'No data.';
-    document.getElementById('chartPlaceSubtitle').textContent = '';
     setPlacementVisible(!classifiersOnly);
-    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
-    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    resetSecondaryAnalysis();
     drawMessage(document.getElementById('chartTime'),  msg);
     if (!classifiersOnly) drawMessage(document.getElementById('chartPlace'), msg);
     document.getElementById('statMatches').textContent = '0';
@@ -1243,12 +1247,8 @@ function renderAll() {
     const msg = selectedDiv
       ? `No ${divisionLabel(selectedDiv)} matches found in the selected date range.`
       : 'No matches found in the selected date range.';
-    document.getElementById('chartPlaceSubtitle').textContent = '';
     setPlacementVisible(!classifiersOnly);
-    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
-    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    resetSecondaryAnalysis();
     drawMessage(document.getElementById('chartTime'), msg);
     if (!classifiersOnly) drawMessage(document.getElementById('chartPlace'), msg);
     document.getElementById('statMatches').textContent = '0';
@@ -1403,11 +1403,7 @@ function renderAll() {
     clfPoints.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
     // Classifier-only mode never displays the normal analysis charts.
-    ['chartNonClfSection','chartClfOverlaySection','chartAccuracySection','chartHitZoneSection']
-      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
-    document.getElementById('chartPlaceSubtitle').textContent = '';
+    resetSecondaryAnalysis();
 
     if (clfPoints.length === 0) {
       document.getElementById('statMatches').textContent = '0';
