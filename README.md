@@ -210,7 +210,10 @@ extension/          ← Load this folder in Chrome
   manifest.json
   background.js     ← Service worker: scraping and fetch logic
   dashboard.html    ← Dashboard UI
-  dashboard.js      ← Charts, analytics, summaries, and UI logic
+  dashboard.js      ← Dashboard state, analytics, summaries, and orchestration
+  dashboard-charts.js   ← Chart geometry and canvas drawing
+  dashboard-exports.js  ← CSV and PNG exports
+  dashboard-history.js  ← Match History rendering and actions
   fonts/
     Inter-Variable.woff2  ← Bundled Inter variable font (latin, 100–900)
   icons/
