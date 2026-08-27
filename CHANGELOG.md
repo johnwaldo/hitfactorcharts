@@ -4,9 +4,18 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.6.7 — 2026-08-27
+
+### Added
+
+- Percentage charts now include neutral reference guides at useful benchmarks without applying USPSA classification bands to non-classifier results.
+
 ### Fixed
 
-- Broader fetch timelines now traverse paginated Match History without collapsing same-date matches, repair legacy or partial stage caches, search paginated result tables, and preserve prior history and stages when extraction remains incomplete.
+- Broader fetch timelines now reuse complete cached matches while fetching missing history, reducing unnecessary PractiScore requests.
+- Expanded fetches now traverse paginated Match History without collapsing same-date matches, repair legacy or partial stage caches, search paginated result tables, and preserve prior history and stages when extraction remains incomplete.
+- Analytics range controls now disable periods outside the fetched coverage instead of implying that unavailable history has been loaded.
+- Charts now render at the correct high-DPI canvas size and remain sharp after resizing.
 
 ### Changed
 
