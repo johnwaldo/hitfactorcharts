@@ -44,9 +44,9 @@ const chartsEl     = document.getElementById('charts');
 const debugLogEl   = document.getElementById('debugLog');
 const matchHistory = document.getElementById('matchHistory');
 const matchRowsEl  = document.getElementById('matchRows');
-const masterCalendar = document.getElementById('masterCalendar');
-const calendarMonthsEl = document.getElementById('calendarMonths');
-const calendarStatusEl = document.getElementById('calendarStatus');
+const last8MatchesChk = document.getElementById('last8MatchesChk');
+const last8ToggleWrap = document.getElementById('last8ToggleWrap');
+const last8StatusEl = document.getElementById('last8Status');
 const tooltipEl    = document.getElementById('tooltip');
 
 // ── Update check ─────────────────────────────────────────────────────────────
@@ -227,6 +227,7 @@ let classificationData = null;  // data from uspsa.org/classification/[memberNum
 let classifiersOnly  = false;   // when true, charts show only classifier stage scores
 let adjustedOnly     = false;   // when true, Score Over Time shows only adjusted match points
 let selectedFetchTimeline = '6m'; // pre-fetch request scope; independent of analytics range
+let last8Matches = false;       // post-fetch analytics limit; never truncates cached history
 let lastFetchScope = null;
 
 const FETCH_TIMELINE_PRESETS = Object.freeze({
@@ -707,7 +708,7 @@ function hideOnboarding() {
 }
 
 // ── Restore persisted state on load ──────────────────────────────────────────
-chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision', 'fetchTimeline'], async d => {
+chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision', 'fetchTimeline', 'last8Matches'], async d => {
   // Try restoring from sync if local has no credentials (e.g. after reinstall)
   if (!d.memberNumber && !d.name) {
     await restoreFromSync();
@@ -725,6 +726,8 @@ chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache',
   divisionFilter.value = selectedDiv || '';
   selectedFetchTimeline = normalizeFetchTimeline(d.fetchTimeline);
   fetchTimelineSelect.value = selectedFetchTimeline;
+  last8Matches = d.last8Matches === true;
+  renderLast8Control();
 
   // Lock inputs if we already have saved credentials
   if (d.memberNumber || d.name) {
@@ -979,145 +982,21 @@ function filterByActiveDateRange(records, referenceDate = new Date()) {
   });
 }
 
-function calendarMonthStarts(referenceDate = new Date()) {
-  const currentMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
-  return Array.from({ length: 6 }, (_, index) =>
-    new Date(currentMonth.getFullYear(), currentMonth.getMonth() - (5 - index), 1)
-  );
+function applyLast8Limit(records) {
+  return last8Matches ? records.slice(-8) : records;
 }
 
-function calendarWindow(records, referenceDate = new Date()) {
-  const months = calendarMonthStarts(referenceDate);
-  const start = localDateOnly(months[0]);
-  const end = localDateOnly(referenceDate);
-  const matchesByDate = new Map();
-  let invalidDateCount = 0;
-
-  for (const match of records) {
-    const date = normalizeDateOnly(match.date);
-    if (!date) {
-      invalidDateCount++;
-      continue;
-    }
-    if (date < start || date > end) continue;
-    if (!matchesByDate.has(date)) matchesByDate.set(date, []);
-    matchesByDate.get(date).push(match);
+function renderLast8Control(totalCount = null, visibleCount = null) {
+  last8MatchesChk.checked = last8Matches;
+  last8ToggleWrap.classList.toggle('active', last8Matches);
+  if (totalCount == null || visibleCount == null) {
+    last8StatusEl.textContent = last8Matches ? 'Last 8 enabled' : 'All matches in range';
+    return;
   }
-
-  return { months, start, end, matchesByDate, invalidDateCount };
-}
-
-function focusMatchHistory(matchId) {
-  const row = [...document.querySelectorAll('.match-row')]
-    .find(candidate => candidate.dataset.matchId === String(matchId));
-  if (!row) return;
-  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  row.focus({ preventScroll: true });
-  row.classList.add('calendar-target');
-  window.setTimeout(() => row.classList.remove('calendar-target'), 1800);
-}
-
-function renderMasterCalendar(records, referenceDate = new Date()) {
-  masterCalendar.classList.add('visible');
-  calendarMonthsEl.innerHTML = '';
-
-  const { months, end, matchesByDate, invalidDateCount } = calendarWindow(records, referenceDate);
-
-  const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
-  const dateFormatter = new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  let visibleCount = 0;
-
-  for (const monthStart of months) {
-    const year = monthStart.getFullYear();
-    const month = monthStart.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const block = document.createElement('section');
-    block.className = 'calendar-month';
-    block.setAttribute('aria-label', monthFormatter.format(monthStart));
-
-    const heading = document.createElement('h3');
-    heading.textContent = monthFormatter.format(monthStart);
-    block.appendChild(heading);
-
-    const weekdayRow = document.createElement('div');
-    weekdayRow.className = 'calendar-weekdays';
-    weekdayRow.setAttribute('aria-hidden', 'true');
-    for (const weekday of weekdays) {
-      const label = document.createElement('span');
-      label.textContent = weekday;
-      weekdayRow.appendChild(label);
-    }
-    block.appendChild(weekdayRow);
-
-    const days = document.createElement('div');
-    days.className = 'calendar-days';
-    for (let blank = 0; blank < monthStart.getDay(); blank++) {
-      const spacer = document.createElement('div');
-      spacer.className = 'calendar-day empty';
-      spacer.setAttribute('aria-hidden', 'true');
-      days.appendChild(spacer);
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateObject = new Date(year, month, day);
-      const date = localDateOnly(dateObject);
-      const cell = document.createElement('div');
-      cell.className = 'calendar-day' + (date === end ? ' today' : '');
-
-      const dayNumber = document.createElement('span');
-      dayNumber.className = 'calendar-day-number';
-      dayNumber.textContent = String(day);
-      cell.appendChild(dayNumber);
-
-      for (const match of matchesByDate.get(date) || []) {
-        visibleCount++;
-        const name = match.match_name || 'Untitled match';
-        const division = divisionLabel(match.division);
-        const score = effectiveOverallPct(match);
-        const scoreText = score != null ? `${score.toFixed(1)}%` : 'No score';
-
-        const entry = document.createElement('button');
-        entry.type = 'button';
-        entry.className = 'calendar-entry';
-        entry.setAttribute('aria-label', `View ${name} in Match History — ${dateFormatter.format(dateObject)}, ${division}, ${scoreText}`);
-        entry.addEventListener('click', () => focusMatchHistory(match.match_id));
-
-        const nameEl = document.createElement('span');
-        nameEl.className = 'calendar-entry-name';
-        nameEl.textContent = name;
-        entry.appendChild(nameEl);
-
-        const metaEl = document.createElement('span');
-        metaEl.className = 'calendar-entry-meta';
-        metaEl.textContent = `${division} · ${scoreText}`;
-        entry.appendChild(metaEl);
-        cell.appendChild(entry);
-      }
-
-      days.appendChild(cell);
-    }
-
-    const renderedCellCount = monthStart.getDay() + daysInMonth;
-    for (let blank = renderedCellCount; blank % 7 !== 0; blank++) {
-      const spacer = document.createElement('div');
-      spacer.className = 'calendar-day empty';
-      spacer.setAttribute('aria-hidden', 'true');
-      days.appendChild(spacer);
-    }
-
-    block.appendChild(days);
-    calendarMonthsEl.appendChild(block);
-  }
-
-  const rangeLabel = `${monthFormatter.format(months[0])}–${monthFormatter.format(months[5])}`;
-  const matchLabel = visibleCount
-    ? `${visibleCount} match${visibleCount === 1 ? '' : 'es'} · ${rangeLabel}`
-    : `No chartable matches · ${rangeLabel}`;
-  const invalidLabel = invalidDateCount
-    ? ` · ${invalidDateCount} record${invalidDateCount === 1 ? '' : 's'} without a valid date omitted`
-    : '';
-  calendarStatusEl.textContent = matchLabel + invalidLabel;
+  const noun = totalCount === 1 ? 'match' : 'matches';
+  last8StatusEl.textContent = last8Matches
+    ? `Showing ${visibleCount} of ${totalCount} ${noun} in range`
+    : `${totalCount} ${noun} in range`;
 }
 
 function renderDateRangeFilter() {
@@ -1138,6 +1017,13 @@ document.querySelectorAll('[data-date-preset]').forEach(button => {
 });
 renderDateRangeFilter();
 
+last8MatchesChk.addEventListener('change', () => {
+  last8Matches = last8MatchesChk.checked;
+  chrome.storage.local.set({ last8Matches });
+  renderAll();
+});
+renderLast8Control();
+
 // ── Render charts + stats ─────────────────────────────────────────────────────
 function setPlacementVisible(visible) {
   const el = document.getElementById('chartPlaceSection');
@@ -1153,7 +1039,7 @@ function setPlacementVisible(visible) {
 function renderAll() {
   renderDateRangeFilter();
   if (!allResults.length) {
-    masterCalendar.classList.remove('visible');
+    renderLast8Control(0, 0);
     return;
   }
 
@@ -1175,14 +1061,13 @@ function renderAll() {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
   });
-  renderMasterCalendar(sorted);
-
   summaryBar.classList.add('visible');
   chartsEl.classList.add('visible');
   sizeCanvases();
   syncChartModeControls();
 
   if (sorted.length === 0) {
+    renderLast8Control(0, 0);
     const msg = selectedDiv
       ? `No ${divisionLabel(selectedDiv)} matches found in the current view.`
       : currentView === 'ranked'
@@ -1211,8 +1096,10 @@ function renderAll() {
     return;
   }
 
-  // Apply one shared range to stats, every chart, summaries, classifier mode, and CSV export.
-  const viewSorted = filterByActiveDateRange(sorted);
+  // Apply one shared range and optional recent-match limit to every analytics surface.
+  const rangeSorted = filterByActiveDateRange(sorted);
+  const viewSorted = applyLast8Limit(rangeSorted);
+  renderLast8Control(rangeSorted.length, viewSorted.length);
 
   if (viewSorted.length === 0) {
     const msg = selectedDiv
@@ -2777,7 +2664,7 @@ function exportStageCard(match, stage) {
 
 // ── CSV Export ────────────────────────────────────────────────────────────────
 // Exports chart-visible match data as a flat CSV (one row per stage).
-// Respects the active division and date-range preset.
+// Respects the active division, date-range preset, and Last 8 preference.
 // Includes USPSA clf_pct when available (official % vs national reference HF).
 function exportChartCSV() {
   const uspsaBase = allResults.filter(r => isChartable(r) && !deselectedMatches.has(r.match_id));
@@ -2788,7 +2675,7 @@ function exportChartCSV() {
     const da = parseDate(a.date), db = parseDate(b.date);
     return (da && db) ? da - db : 0;
   });
-  const viewSorted = filterByActiveDateRange(sorted);
+  const viewSorted = applyLast8Limit(filterByActiveDateRange(sorted));
 
   // Flat format: one row per stage (match-level fields repeated).
   // In classifiersOnly mode, only classifier stages are included.
@@ -2850,7 +2737,8 @@ function exportChartCSV() {
   const csv      = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const dateTag  = (DATE_RANGE_PRESETS[selectedDatePreset] || DATE_RANGE_PRESETS['6m']).fileTag;
   const divisionTag = selectedDiv ? ` ${divisionLabel(selectedDiv)}` : '';
-  const filename = (classifiersOnly ? 'hfc_classifiers' : 'hfc_scores') + `${divisionTag} ${dateTag}.csv`;
+  const last8Tag = last8Matches ? ' last 8' : '';
+  const filename = (classifiersOnly ? 'hfc_classifiers' : 'hfc_scores') + `${divisionTag} ${dateTag}${last8Tag}.csv`;
   const blob     = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url      = URL.createObjectURL(blob);
   const a        = document.createElement('a');
