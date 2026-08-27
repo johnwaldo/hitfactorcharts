@@ -47,6 +47,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Fetch timeline controls pre-fetch request scope; analytics presets independently filter cached data. Keep that distinction explicit in status and documentation.
 - The current visible select value is the next fetch scope. Changing it alone makes no request.
 - Preserve older cache and Match History entries when a narrower timeline is fetched. Explicit single-match refresh remains unrestricted.
+- On a broader later fetch, reuse valid per-match cache entries for the same member before the score/stage loop and request only missing matches. Report reused and requested counts in the progress log.
 - Keep the label and select together as controls wrap at narrow widths, with visible focus and no page-level horizontal overflow.
 
 ## Last 8 analytics
