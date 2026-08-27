@@ -4,6 +4,8 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.6.8 — 2026-08-27
+
 ### Fixed
 
 - Match, non-classifier stage, and Adjusted % displays and PNG cards now remain neutral instead of inferring USPSA classes. Captured GM hit factors appear separately as an explicit benchmark comparison.
