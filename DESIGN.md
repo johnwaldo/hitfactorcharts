@@ -8,7 +8,8 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 
 - The dashboard is fluid and uses 100% of the browser width. Do not restore a fixed page-level maximum width.
 - Sections provide their own horizontal gutters: 24–28px on desktop and 16px at widths up to 640px.
-- Charts fill their section width and redraw from their rendered width after a browser resize.
+- Analytical canvases share a 380px displayed height, fill their section width, and redraw from their rendered dimensions after a browser resize.
+- Canvas backing stores scale to the current device pixel ratio while layout, drawing, and pointer hit testing remain in CSS-pixel coordinates. Hidden canvases retain their last valid backing size until visible measurement is possible.
 - Summary cards and controls wrap rather than forcing page-level horizontal scrolling.
 - At narrow widths, Match History rows wrap metadata and keep refresh, export, and delete actions visibly keyboard-accessible.
 - Wide layouts should use the available charting space; constrain individual text or control elements only when readability requires it.
@@ -27,6 +28,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Date ticks use measured text width and a minimum 10px gap. Keep the final date only when it does not collide with the preceding retained label.
 - Suppress labels for duplicate source dates while preserving distinct same-day data points and tooltips. If different years share the same month and day, include the year so useful dates remain distinguishable.
 - Axis labels must remain inside the canvas and readable in both themes at narrow, desktop, and wide widths.
+- Repeated Classifiers Only toggles, filter changes, theme changes, and resizes must restore analytical canvases with unchanged geometry, sharp rendering, and aligned tooltips.
 - Non-classifier stage percentages are match-relative comparisons with each stage's top shooter. Present them on a linear 0–100% scale without USPSA classification bands, labels, colours, or warped geometry.
 - Keep same-day non-classifier matches as separate chart points and tooltips while rendering their shared date label only once.
 - Regular Score Over Time uses a linear percentage scale without classification bands, inferred class labels, class colours, or warped geometry. Division % and Adjusted % are match-performance signals, not official classifications.

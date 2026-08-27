@@ -132,19 +132,44 @@ function fmtPct(pct) {
   return `<span style="color:${color}">${pct.toFixed(1)}%${label}</span>`;
 }
 
+function chartSize(canvas) {
+  return {
+    width: canvas._logicalWidth ?? canvas.width,
+    height: canvas._logicalHeight ?? canvas.height,
+  };
+}
+
+function prepareChartContext(canvas) {
+  sizeCanvas(canvas);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(canvas._canvasScaleX ?? 1, 0, 0, canvas._canvasScaleY ?? 1, 0, 0);
+  return ctx;
+}
+
+function pointerToChartPoint(event, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const { width, height } = chartSize(canvas);
+  return {
+    x: (event.clientX - rect.left) * (width / rect.width),
+    y: (event.clientY - rect.top) * (height / rect.height),
+  };
+}
+
 function chartArea(canvas) {
+  const { width, height } = chartSize(canvas);
   return {
     x0: PAD.left,
     y0: PAD.top,
-    w:  canvas.width  - PAD.left - PAD.right,
-    h:  canvas.height - PAD.top  - PAD.bottom,
+    w:  width  - PAD.left - PAD.right,
+    h:  height - PAD.top  - PAD.bottom,
   };
 }
 
 function clearCanvas(ctx, canvas) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const { width, height } = chartSize(canvas);
+  ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = CHART_BG();
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, width, height);
 }
 
 // ── Multi-series line chart ───────────────────────────────────────────────────
@@ -152,7 +177,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
   const hasData = seriesArr.some(s => s.points.length > 0);
   if (!hasData) { drawMessage(canvas, 'No data.'); return; }
 
-  const ctx  = canvas.getContext('2d');
+  const ctx  = prepareChartContext(canvas);
   const area = chartArea(canvas);
   clearCanvas(ctx, canvas);
 
@@ -305,9 +330,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
   if (!canvas._tooltipBound) {
     canvas._tooltipBound = true;
     canvas.addEventListener('mousemove', e => {
-      const r  = canvas.getBoundingClientRect();
-      const mx = (e.clientX - r.left) * (canvas.width  / r.width);
-      const my = (e.clientY - r.top)  * (canvas.height / r.height);
+      const { x: mx, y: my } = pointerToChartPoint(e, canvas);
       let h = null;
       let nearestDistance = 16;
       for (const candidate of canvas._hitMap || []) {
@@ -423,7 +446,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
 function drawLineChart(canvas, points, opts = {}) {
   if (!points.length) { drawMessage(canvas, 'No data.'); return; }
 
-  const ctx  = canvas.getContext('2d');
+  const ctx  = prepareChartContext(canvas);
   const area = chartArea(canvas);
   clearCanvas(ctx, canvas);
 
@@ -502,9 +525,7 @@ function drawLineChart(canvas, points, opts = {}) {
   if (!canvas._tooltipBound) {
     canvas._tooltipBound = true;
     canvas.addEventListener('mousemove', e => {
-      const r  = canvas.getBoundingClientRect();
-      const mx = (e.clientX - r.left) * (canvas.width  / r.width);
-      const my = (e.clientY - r.top)  * (canvas.height / r.height);
+      const { x: mx, y: my } = pointerToChartPoint(e, canvas);
       const h  = (canvas._hitMap || []).find(h => Math.hypot(h.cx - mx, h.cy - my) < 16);
       if (h) {
         const unit = canvas._valueUnit;
@@ -549,7 +570,8 @@ function drawLineChart(canvas, points, opts = {}) {
 
 
 function drawMessage(canvas, msg) {
-  const ctx = canvas.getContext('2d');
+  const ctx = prepareChartContext(canvas);
+  const { width, height } = chartSize(canvas);
   clearCanvas(ctx, canvas);
   canvas._hitMap = [];
   canvas._valueUnit = '';
@@ -558,8 +580,8 @@ function drawMessage(canvas, msg) {
   ctx.fillStyle = TEXT_COLOR(); ctx.font = '13px Inter, system-ui, sans-serif'; ctx.textAlign = 'center';
   const lines = String(msg).split('\n');
   const lineHeight = 19;
-  const firstY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((line, index) => ctx.fillText(line, canvas.width / 2, firstY + index * lineHeight));
+  const firstY = height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, index) => ctx.fillText(line, width / 2, firstY + index * lineHeight));
 }
 
 // ── Stacked bar chart — hit zone breakdown ────────────────────────────────────
@@ -568,7 +590,7 @@ function drawMessage(canvas, msg) {
 function drawStackedBarChart(canvas, bars) {
   if (!bars.length) { drawMessage(canvas, 'No data.'); return; }
 
-  const ctx  = canvas.getContext('2d');
+  const ctx  = prepareChartContext(canvas);
   const area = chartArea(canvas);
   clearCanvas(ctx, canvas);
 
@@ -644,12 +666,12 @@ function drawStackedBarChart(canvas, bars) {
   // Tooltip
   canvas._hitMap    = hitMap;
   canvas._valueUnit = 'hitzones';
+  canvas._barHitTolerance = gap / 2;
   if (!canvas._tooltipBound) {
     canvas._tooltipBound = true;
     canvas.addEventListener('mousemove', e => {
-      const r  = canvas.getBoundingClientRect();
-      const mx = (e.clientX - r.left) * (canvas.width  / r.width);
-      const h  = (canvas._hitMap || []).find(h => Math.abs(h.cx - mx) < (area.w / bars.length) / 2);
+      const { x: mx } = pointerToChartPoint(e, canvas);
+      const h = (canvas._hitMap || []).find(hit => Math.abs(hit.cx - mx) < canvas._barHitTolerance);
       if (h) {
         const b = h.bar;
         tooltipEl.innerHTML = `
