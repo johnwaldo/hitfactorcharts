@@ -44,6 +44,8 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 
 A 75% adjusted score means your performance was 75% of the strongest normalized stage result at that match after accounting for division equipment differences. Adjusted % is the better indicator of improvement over time because it accounts for the complete match field, not just your division draw. It is still a match-relative estimate, not an official USPSA classification percentage. Classifier stages are excluded because official classifier percentages are already normalized against USPSA national division data; use **Classifiers Only** to see that official class context.
 
+When adjusted and raw division averages are nearly identical, the dashboard identifies a dominant GM/M reference class and division only when the contributing stage data supports that conclusion. Mixed or missing reference metadata keeps the explanation neutral.
+
 Use **Adjusted % Only** beside **Classifiers Only** to inspect the adjusted series without raw match percentages. The modes are mutually exclusive because adjusted scores exclude classifier stages. Adjusted-only mode never falls back to raw scores; when fewer than two usable adjusted matches are available, the chart explains that older matches may need to be refreshed to load non-classifier cross-division benchmark data. Switching modes uses cached data and does not fetch or rewrite match history.
 
 ---
