@@ -4,6 +4,10 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+### Fixed
+
+- Chart CSV export now shares the final chart dataset and explains empty filtered results instead of downloading a header-only file.
+
 ## v1.6.7 — 2026-08-27
 
 ### Added
