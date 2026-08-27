@@ -4,6 +4,10 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+### Fixed
+
+- Broader fetch timelines now traverse paginated Match History without collapsing same-date matches, repair legacy or partial stage caches, search paginated result tables, and preserve prior history and stages when extraction remains incomplete.
+
 ### Changed
 
 - Hit Zone Breakdown now preserves reported B, separate M/NS, and combined M+NS source data, leaves unavailable legacy fields blank, and uses a disclosed nonlinear visual scale to make smaller outcomes readable without changing raw percentages or exports.

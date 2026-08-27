@@ -47,7 +47,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Activate **6 mo** on every dashboard load. Exactly one preset must expose a visible active state and `aria-pressed="true"`.
 - Use compact native buttons with a clear keyboard focus ring. The group wraps at narrow widths rather than becoming a dropdown or creating horizontal page overflow.
 - Date-range changes update the existing cached analytics immediately. They do not hide or delete older Match History records.
-- After a successful match-list extraction, persist validated cumulative fetch intervals (or an explicit successful all-time fetch). A later narrower fetch must not erase broader coverage; malformed or missing metadata preserves legacy range behavior until a successful fetch establishes coverage.
+- After a complete paginated match-list extraction, persist validated cumulative fetch intervals (or an explicit successful all-time fetch). A later narrower fetch must not erase broader coverage; incomplete extraction and malformed or missing metadata preserve previous history and coverage until a complete fetch establishes new coverage.
 - Only presets fully contained by verified coverage are selectable. Unavailable presets remain focusable with `aria-disabled="true"`, a greyed state, and the hover/focus explanation: “Fetch a longer timeline to use this range.” Do not use native `disabled`, which would hide that help from keyboard users.
 - If a bounded fetch makes the active preset unavailable, select the broadest verified available preset. Last 8, division, match selection, cache contents, and single-match refresh never affect coverage.
 
@@ -57,7 +57,11 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Fetch timeline controls pre-fetch request scope; analytics presets independently filter cached data. Keep that distinction explicit in status and documentation.
 - The current visible select value is the next fetch scope. Changing it alone makes no request.
 - Preserve older cache and Match History entries when a narrower timeline is fetched. Explicit single-match refresh remains unrestricted.
-- On a broader later fetch, reuse valid per-match cache entries for the same member before the score/stage loop and request only missing matches. Report reused and requested counts in the progress log.
+- Traverse every available Match History page and associate ID, name, and date within one source row or structured record. Deduplicate by match ID, never by date, so same-day matches remain distinct. An unsettled or incomplete extraction is non-destructive.
+- Store cache completeness with parser schema version, `complete|partial|unknown` state, expected and fetched stage counts, and failed stage identities. Legacy records are `unknown` and receive one lazy repair; only explicitly complete same-member records bypass score and stage requests.
+- Stage repair is sequential and bounded. Verify each selected stage, traverse result-table pages, retry failures, merge successful partial data by stable stage identity, and replace stages only after a complete authoritative fetch. Preserve stage overrides by stage number when names change.
+- Report extracted and in-range matches, complete cache reuse, partial and unknown repairs, new matches, expected and fetched stages, and failed stages as separate diagnostics.
+- Use the dashboard-supplied inclusive date bounds as the authoritative fetch window so frontend and background scope cannot diverge across midnight.
 - Keep the label and select together as controls wrap at narrow widths, with visible focus and no page-level horizontal overflow.
 
 ## Last 8 analytics

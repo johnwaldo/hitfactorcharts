@@ -2,6 +2,9 @@
 
 const PS_BASE = 'https://practiscore.com';
 const USPSA_BASE = 'https://uspsa.org';
+const CACHE_SCHEMA_VERSION = 1;
+const MAX_HISTORY_PAGES = 100;
+const MAX_RESULTS_PAGES = 100;
 
 // ── Open dashboard tab (or focus if already open) ─────────────────────────────
 chrome.action.onClicked.addListener(async () => {
@@ -140,8 +143,11 @@ function resolveFetchTimeline(requested, referenceDate = new Date()) {
   const requestedValue = typeof requested === 'object' ? requested?.value : requested;
   const value = Object.hasOwn(FETCH_TIMELINES, requestedValue) ? requestedValue : '6m';
   const preset = FETCH_TIMELINES[value];
-  const end = preset.months == null ? null : localDateOnly(referenceDate);
-  const start = end == null ? null : subtractCalendarMonths(end, preset.months);
+  const suppliedStart = normalizeDateOnly(requested?.start);
+  const suppliedEnd = normalizeDateOnly(requested?.end);
+  const hasSuppliedBounds = value !== 'all' && suppliedStart && suppliedEnd && suppliedStart <= suppliedEnd;
+  const end = preset.months == null ? null : (hasSuppliedBounds ? suppliedEnd : localDateOnly(referenceDate));
+  const start = end == null ? null : (hasSuppliedBounds ? suppliedStart : subtractCalendarMonths(end, preset.months));
   return { value, label: preset.label, start, end };
 }
 
@@ -306,7 +312,71 @@ function buildResult(match, score, memberNumber) {
 function isReusableMatchCache(cached, memberNumber) {
   if (!cached || typeof cached !== 'object') return false;
   const expectedOwner = (memberNumber || '').toUpperCase() || null;
-  return cached.cached_for === expectedOwner;
+  const metadata = cached.cache_completeness;
+  return cached.cached_for === expectedOwner &&
+    metadata?.schema_version === CACHE_SCHEMA_VERSION &&
+    metadata.state === 'complete' &&
+    Number.isInteger(metadata.expected_stage_count) &&
+    metadata.expected_stage_count === metadata.fetched_stage_count &&
+    Array.isArray(metadata.failed_stages) && metadata.failed_stages.length === 0 &&
+    Array.isArray(cached.stages) && cached.stages.length === metadata.expected_stage_count;
+}
+
+function isSameOwnerCache(cached, memberNumber) {
+  if (!cached || typeof cached !== 'object') return false;
+  return cached.cached_for === ((memberNumber || '').toUpperCase() || null);
+}
+
+function cacheRepairReason(cached, memberNumber) {
+  if (!cached || typeof cached !== 'object') return 'new';
+  const expectedOwner = (memberNumber || '').toUpperCase() || null;
+  if (cached.cached_for !== expectedOwner) return 'owner';
+  return cached.cache_completeness?.state === 'partial' ? 'partial' : 'unknown';
+}
+
+function stageIdentity(stage, index = 0) {
+  const num = Number(stage?.num);
+  if (Number.isInteger(num) && num > 0) return `num:${num}`;
+  const name = String(stage?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return name ? `name:${name}` : `index:${index}`;
+}
+
+function mergeStageRepair(previousStages, repair) {
+  const fetched = Array.isArray(repair?.stages) ? repair.stages : [];
+  if (repair?.state === 'complete') return fetched;
+  const merged = new Map();
+  (Array.isArray(previousStages) ? previousStages : []).forEach((stage, index) => {
+    merged.set(stageIdentity(stage, index), stage);
+  });
+  fetched.forEach((stage, index) => merged.set(stageIdentity(stage, index), stage));
+  return [...merged.values()].sort((left, right) => (Number(left?.num) || 0) - (Number(right?.num) || 0));
+}
+
+async function migrateStageOverrides(matchId, previousStages, nextStages) {
+  if (!Array.isArray(previousStages) || !Array.isArray(nextStages)) return;
+  const stored = await chrome.storage.local.get('stageOverrides');
+  const matchOverrides = stored.stageOverrides?.[matchId];
+  if (!matchOverrides || typeof matchOverrides !== 'object') return;
+
+  const byNumber = new Map();
+  previousStages.forEach((stage, index) => {
+    const num = Number(stage?.num) || index + 1;
+    const prefix = `${String(num).padStart(2, '0')}|`;
+    const key = Object.keys(matchOverrides).find(candidate => candidate.startsWith(prefix));
+    if (key) byNumber.set(num, matchOverrides[key]);
+  });
+  if (!byNumber.size) return;
+
+  const migrated = {};
+  nextStages.forEach((stage, index) => {
+    const num = Number(stage?.num) || index + 1;
+    const override = byNumber.get(num);
+    if (!override) return;
+    const normalizedName = String(stage?.name || '').replace(/^stage\s*\d+\s*[:\-–]?\s*/i, '').trim() || String(stage?.name || '');
+    migrated[`${String(num).padStart(2, '0')}|${normalizedName}`] = override;
+  });
+  const stageOverrides = { ...stored.stageOverrides, [matchId]: migrated };
+  await chrome.storage.local.set({ stageOverrides });
 }
 
 // ── results/new/{matchId} scraper — injected into tab ─────────────────────────
@@ -397,6 +467,22 @@ function getResultsNewState(mem, nm) {
   // Table exists but is empty — data hasn't rendered yet
   if (!total) return { _loading: true, _debug: 'table has 0 rows' };
 
+  const selectedResultLevel = document.getElementById('resultLevel')?.value ?? null;
+  const wrapper = table.closest('.dataTables_wrapper, .card, .panel') || table.parentElement?.parentElement || document;
+  const nextControl = [...wrapper.querySelectorAll('a, button')].find(control => {
+    const label = `${control.textContent || ''} ${control.getAttribute('aria-label') || ''} ${control.getAttribute('rel') || ''}`.trim();
+    const disabled = control.disabled || control.getAttribute('aria-disabled') === 'true' ||
+      control.classList.contains('disabled') || control.parentElement?.classList.contains('disabled');
+    return !disabled && (/\bnext\b/i.test(label) || /^[›»>]$/.test((control.textContent || '').trim()));
+  });
+  const previousControl = [...wrapper.querySelectorAll('a, button')].find(control => {
+    const label = `${control.textContent || ''} ${control.getAttribute('aria-label') || ''} ${control.getAttribute('rel') || ''}`.trim();
+    const disabled = control.disabled || control.getAttribute('aria-disabled') === 'true' ||
+      control.classList.contains('disabled') || control.parentElement?.classList.contains('disabled');
+    return !disabled && (/\bprev(?:ious)?\b/i.test(label) || /^[‹«<]$/.test((control.textContent || '').trim()));
+  });
+  const pageSignature = rows.map(row => row.textContent.trim().replace(/\s+/g, ' ')).join('|');
+
   function parseRow(row) {
     const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
     const out   = { total, hit_columns: hitColumns };
@@ -466,6 +552,10 @@ function getResultsNewState(mem, nm) {
       allCompetitorRows,
       _rowCount: total,
       pageMatchType,
+      selectedResultLevel,
+      hasNextPage: !!nextControl,
+      hasPreviousPage: !!previousControl,
+      pageSignature,
     };
   }
 
@@ -475,6 +565,10 @@ function getResultsNewState(mem, nm) {
     allCompetitorRows,
     _rowCount: total, _headers: ths,
     pageMatchType,
+    selectedResultLevel,
+    hasNextPage: !!nextControl,
+    hasPreviousPage: !!previousControl,
+    pageSignature,
   };
 }
 
@@ -485,6 +579,107 @@ function setSelectAndFire(selectId, value) {
   el.value = value;
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return true;
+}
+
+// Injected helper — advances the largest rendered results table by one page.
+function clickNextResultsPage() {
+  const mainDiv = document.querySelector('#mainResultsDiv');
+  const tables = mainDiv ? [...mainDiv.querySelectorAll('table')] : [];
+  const table = tables.sort((left, right) => right.querySelectorAll('tr').length - left.querySelectorAll('tr').length)[0];
+  if (!table) return false;
+  const wrapper = table.closest('.dataTables_wrapper, .card, .panel') || table.parentElement?.parentElement || document;
+  const control = [...wrapper.querySelectorAll('a, button')].find(candidate => {
+    const label = `${candidate.textContent || ''} ${candidate.getAttribute('aria-label') || ''} ${candidate.getAttribute('rel') || ''}`.trim();
+    const disabled = candidate.disabled || candidate.getAttribute('aria-disabled') === 'true' ||
+      candidate.classList.contains('disabled') || candidate.parentElement?.classList.contains('disabled');
+    return !disabled && (/\bnext\b/i.test(label) || /^[›»>]$/.test((candidate.textContent || '').trim()));
+  });
+  if (!control) return false;
+  control.click();
+  return true;
+}
+
+// Injected helper — returns the rendered results table to page one before a
+// fresh stage/division collection begins.
+function resetResultsPagination() {
+  const mainDiv = document.querySelector('#mainResultsDiv');
+  const tables = mainDiv ? [...mainDiv.querySelectorAll('table')] : [];
+  const table = tables.sort((left, right) => right.querySelectorAll('tr').length - left.querySelectorAll('tr').length)[0];
+  if (!table) return { clicked: false, alreadyFirst: null };
+  const wrapper = table.closest('.dataTables_wrapper, .card, .panel') || table.parentElement?.parentElement || document;
+  const controls = [...wrapper.querySelectorAll('a, button')];
+  const activePage = controls.find(control =>
+    control.getAttribute('aria-current') === 'page' || control.classList.contains('current') ||
+    control.classList.contains('active') || control.parentElement?.classList.contains('active')
+  );
+  if ((activePage?.textContent || '').trim() === '1') return { clicked: false, alreadyFirst: true };
+  const pageOne = controls.find(control => {
+    const text = (control.textContent || '').trim();
+    const current = control.getAttribute('aria-current') === 'page' || control.classList.contains('current') ||
+      control.classList.contains('active') || control.parentElement?.classList.contains('active');
+    return text === '1' && !current;
+  });
+  if (!pageOne) return { clicked: false, alreadyFirst: activePage ? false : null };
+  pageOne.click();
+  return { clicked: true, alreadyFirst: false };
+}
+
+async function collectResultsPages(tabId, memberNumber, name, push, expectedResultLevel = null) {
+  const allRows = [];
+  const seen = new Set();
+  let found = null;
+  let last = null;
+
+  const beforeReset = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
+  const reset = await runInTab(tabId, resetResultsPagination);
+  if (reset?.alreadyFirst === false && !reset.clicked) {
+    return { ...(beforeReset || {}), allCompetitorRows: [], _paginationIncomplete: true };
+  }
+  if (reset?.alreadyFirst == null && beforeReset?.hasPreviousPage) {
+    return { ...(beforeReset || {}), allCompetitorRows: [], _paginationIncomplete: true };
+  }
+  if (reset?.clicked) {
+    let resetSettled = false;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await sleep(300 + attempt * 100);
+      const state = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
+      if (!state?._loading && state?.pageSignature && state.pageSignature !== beforeReset?.pageSignature) {
+        resetSettled = true;
+        break;
+      }
+    }
+    if (!resetSettled) {
+      return { ...(beforeReset || {}), allCompetitorRows: [], _paginationIncomplete: true };
+    }
+  }
+
+  for (let pageNumber = 1; pageNumber <= MAX_RESULTS_PAGES; pageNumber++) {
+    let state = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      state = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
+      const selected = state?.selectedResultLevel;
+      const expectedReady = expectedResultLevel == null || String(selected) === String(expectedResultLevel);
+      if (!state?._loading && expectedReady && state?.pageSignature && !seen.has(state.pageSignature)) break;
+      await sleep(500 + attempt * 150);
+    }
+    if (!state || state._loading || !state.pageSignature || seen.has(state.pageSignature)) {
+      return { ...(found || last || state || {}), allCompetitorRows: allRows, _paginationIncomplete: true };
+    }
+
+    seen.add(state.pageSignature);
+    allRows.push(...(state.allCompetitorRows || []));
+    if (!found && state._found) found = state;
+    last = state;
+    if (!state.hasNextPage) {
+      return { ...(found || state), allCompetitorRows: allRows, _pagesRead: pageNumber };
+    }
+
+    const advanced = await runInTab(tabId, clickNextResultsPage);
+    if (!advanced) return { ...(found || state), allCompetitorRows: allRows, _paginationIncomplete: true };
+  }
+
+  push(`     result pagination exceeded ${MAX_RESULTS_PAGES} pages`);
+  return { ...(found || last || {}), allCompetitorRows: allRows, _paginationIncomplete: true };
 }
 
 // ── HTML results page scraper — injected into tab, no external references ─────
@@ -680,9 +875,19 @@ function median(arr) {
 // and fetches the Combined (all-divisions) view to find the best HF across
 // all divisions for field-strength-adjusted scoring.
 async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageOptions, push, classifierMap, divisionOptions) {
+  const definitionCount = classifierMap instanceof Map ? classifierMap.size : null;
   if (!stageOptions || !stageOptions.length) {
-    push('     no stage options found');
-    return null;
+    push('     stage enumeration incomplete: no stage options found');
+    const failedStages = definitionCount
+      ? [...classifierMap.keys()].map(num => ({ num, reason: 'missing stage option' }))
+      : [];
+    return {
+      stages: [],
+      expectedCount: definitionCount,
+      fetchedCount: 0,
+      failedStages,
+      state: definitionCount ? 'partial' : 'unknown',
+    };
   }
 
   // Find the "Combined" option in the division dropdown (shows all divisions)
@@ -699,25 +904,31 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
 
   push(`     fetching ${stageOptions.length} stage(s)…`);
   const stages = [];
+  const failedStages = [];
 
   for (const opt of stageOptions) {
-    // Switch #resultLevel to this stage (division is already set from fetchMatchScore)
-    await runInTab(tabId, setSelectAndFire, ['resultLevel', opt.href || opt.value || opt.text]);
-    await sleep(900);
-
-    // Wait for re-render
+    const stageValue = opt.href || opt.value || opt.text;
     let page = null;
-    for (let i = 0; i < 6; i++) {
-      page = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
-      if (page._loading) { await sleep(1000); continue; }
-      break;
+    for (let attempt = 0; attempt < 2 && !page?._found; attempt++) {
+      await runInTab(tabId, setSelectAndFire, ['resultLevel', stageValue]);
+      await sleep(500 + attempt * 500);
+      page = await collectResultsPages(tabId, memberNumber, name, push, stageValue);
+      if (!page?._found || page._paginationIncomplete) {
+        push(`     ${opt.text}: attempt ${attempt + 1} incomplete`);
+        page = null;
+      }
     }
 
-    if (!page?._found) { push(`     ${opt.text}: not found`); continue; }
+    if (!page?._found) {
+      push(`     ${opt.text}: failed after retry`);
+      failedStages.push({ value: stageValue, text: opt.text });
+      continue;
+    }
 
     const d = page.competitorData;
     const stageName = opt.text.replace(/^stage\s*\d+\s*[:\-–]?\s*/i, '').trim() || opt.text;
     const stageNum  = parseInt(opt.text.match(/\d+/)?.[0]) || stages.length + 1;
+    const classifier = classifierMap?.get(stageNum) || {};
 
     // ── GM benchmark: collect HF values for all GM-class competitors in same division ──
     // allCompetitorRows contains every row from the current (division-filtered) stage view.
@@ -741,11 +952,16 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
       await runInTab(tabId, setSelectAndFire, ['divisionLevel', combinedOpt.value]);
       await sleep(900);
 
-      let combinedPage = null;
-      for (let i = 0; i < 4; i++) {
-        combinedPage = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
-        if (combinedPage._loading) { await sleep(800); continue; }
-        break;
+      const combinedPage = await collectResultsPages(tabId, memberNumber, name, push, stageValue);
+
+      if (combinedPage?._paginationIncomplete) {
+        push(`     ${opt.text}: combined results pagination incomplete`);
+        failedStages.push({ value: stageValue, text: opt.text, reason: 'combined pagination incomplete' });
+        if (userDivOpt) {
+          await runInTab(tabId, setSelectAndFire, ['divisionLevel', userDivOpt.value]);
+          await sleep(600);
+        }
+        continue;
       }
 
       const combinedRows = combinedPage?.allCompetitorRows || [];
@@ -807,13 +1023,22 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
       hit_columns:     d.hit_columns,
       gm_median_hf,
       xdiv_benchmarks,
-      is_classifier:   null,
-      classifier_code: null,
+      is_classifier:   classifier.is_classifier ?? null,
+      classifier_code: classifier.classifier_code ?? null,
     });
     push(`     ${opt.text}: ${d.hf?.toFixed(4) ?? '?'} HF  ${d.overall_pct?.toFixed(1) ?? '?'}%`);
   }
 
-  return stages.length ? stages : null;
+  const fetchedCount = stages.length;
+  const expectedCount = Math.max(stageOptions.length, definitionCount || 0);
+  if (definitionCount && definitionCount > stageOptions.length) {
+    const represented = new Set(stageOptions.map(option => parseInt(option.text.match(/\d+/)?.[0])).filter(Number.isInteger));
+    for (const num of classifierMap.keys()) {
+      if (!represented.has(Number(num))) failedStages.push({ num, reason: 'missing stage option' });
+    }
+  }
+  const state = failedStages.length === 0 && fetchedCount === expectedCount ? 'complete' : 'partial';
+  return { stages, expectedCount, fetchedCount, failedStages, state };
 }
 
 // ── USPSA.org classification page scraper ─────────────────────────────────────
@@ -1005,8 +1230,10 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
       return { results: [], log, _not_logged_in_ps: true };
     }
 
-    const rawMatchList = await runInTab(tabId, extractMatchList);
-    push(`Found ${rawMatchList.length} match(es).`);
+    const history = await collectMatchHistory(tabId, push);
+    const rawMatchList = history.matches;
+    push(`Extracted ${rawMatchList.length} match(es) across ${history.pagesRead} history page(s).`);
+    if (!history.complete) push(`Match history extraction incomplete (${history.reason}); preserving cached history and coverage.`);
     console.log('[HFC] matchList:', JSON.stringify(rawMatchList, null, 2));
 
     // Annotate every match with its detected type
@@ -1033,13 +1260,13 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
     const previousMatchList = stored.lastMatchList || [];
     const cache = stored.matchCache || {};
     const matchTypeOverrides = normalizeMatchTypeOverrides(stored.matchTypeOverrides);
-    const preserveMissingHistory = fetchScope.value !== 'all' || rawMatchList.length === 0;
+    const preserveMissingHistory = fetchScope.value !== 'all' || !history.complete;
     let mergedMatchList = mergeMatchLists(previousMatchList, matchList, { preserveMissing: preserveMissingHistory });
     const hasUsableMatchDate = annotatedMatchList.some(match => {
       const date = normalizeDateOnly(match.date);
       return date && date <= localDateOnly();
     });
-    const fetchCoverage = hasUsableMatchDate
+    const fetchCoverage = hasUsableMatchDate && history.complete
       ? mergeFetchCoverage(stored.fetchCoverage, fetchScope)
       : normalizeFetchCoverage(stored.fetchCoverage);
     await chrome.storage.local.set({
@@ -1071,10 +1298,15 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
 
     const cachedMatches = [];
     const uncachedMatches = [];
+    const repairCounts = { partial: 0, unknown: 0, owner: 0, new: 0 };
     for (const match of uspsaMatches) {
       const cached = cache[match.match_id];
       if (isReusableMatchCache(cached, memberNumber)) cachedMatches.push(match);
-      else uncachedMatches.push(match);
+      else {
+        const reason = cacheRepairReason(cached, memberNumber);
+        repairCounts[reason]++;
+        uncachedMatches.push(match);
+      }
     }
 
     for (const match of cachedMatches) {
@@ -1084,7 +1316,12 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
       push(`Reusing ${cachedMatches.length} cached in-range match(es).`);
     }
 
-    push(`Fetching scores for ${uncachedMatches.length} uncached in-range USPSA match(es)…`);
+    push(`Detail work: ${cachedMatches.length} complete cache reused; ${repairCounts.partial} partial repair(s); ${repairCounts.unknown} legacy/unknown repair(s); ${repairCounts.owner} owner mismatch(es); ${repairCounts.new} new match(es).`);
+    push(`Fetching details for ${uncachedMatches.length} in-range USPSA match(es)…`);
+
+    let expectedStageCount = 0;
+    let fetchedStageCount = 0;
+    let failedStageCount = 0;
 
     for (let i = 0; i < uncachedMatches.length; i++) {
       const match = uncachedMatches[i];
@@ -1098,12 +1335,28 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
       const classifierMap = score.overall_pct != null
         ? await fetchMatchDef(match.match_id, push)
         : null;
-      const stages = score.overall_pct != null
+      const stageRepair = score.overall_pct != null
         ? await fetchStageData(tabId, match.match_id, memberNumber, name, score._divKey, score._stageOptions, push, classifierMap, score._divisionOptions)
-        : null;
-      const result = buildResult(match, { ...score, stages }, memberNumber);
+        : { stages: [], expectedCount: null, fetchedCount: 0, failedStages: [], state: 'unknown' };
+      const previous = isSameOwnerCache(cache[match.match_id], memberNumber) ? cache[match.match_id] : null;
+      const stages = mergeStageRepair(previous?.stages, stageRepair);
+      const completeness = {
+        schema_version: CACHE_SCHEMA_VERSION,
+        state: stageRepair.state,
+        expected_stage_count: stageRepair.expectedCount,
+        fetched_stage_count: stageRepair.fetchedCount,
+        failed_stages: stageRepair.failedStages,
+      };
+      const fetchedResult = buildResult(match, { ...score, stages }, memberNumber);
+      const result = score.overall_pct != null
+        ? { ...(previous || {}), ...fetchedResult, stages, cache_completeness: completeness }
+        : { ...match, ...(previous || fetchedResult), _detail_error: true };
+      expectedStageCount += stageRepair.expectedCount || 0;
+      fetchedStageCount += stageRepair.fetchedCount;
+      failedStageCount += stageRepair.failedStages.length;
       // Only cache when a score was actually found — prevents cache poisoning from wrong credentials
-      if (result.overall_pct != null) {
+      if (score.overall_pct != null) {
+        await migrateStageOverrides(match.match_id, previous?.stages, stages);
         await updateMatchCache(match.match_id, result);
       }
       results.push({ ...result, _cached: false });
@@ -1117,7 +1370,8 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
 
     const n = results.filter(r => r.overall_pct != null).length;
     const newlyScoredCount = results.filter(r => r._cached === false && r.overall_pct != null).length;
-    push(`Done — ${n}/${uspsaMatches.length} matches with scores; ${cachedMatches.length} reused, ${uncachedMatches.length} requested.`);
+    push(`Stage accounting: ${expectedStageCount} expected; ${fetchedStageCount} fetched; ${failedStageCount} failed.`);
+    push(`Done — ${n}/${uspsaMatches.length} matches with scores; ${cachedMatches.length} complete caches reused, ${uncachedMatches.length} detail requests.`);
 
     // Refresh USPSA classification only when this run fetched at least one new score.
     let classificationData = null;
@@ -1136,13 +1390,25 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
     const combinedResults = mergedMatchList.map(match => {
       if (fetchedById.has(match.match_id)) return fetchedById.get(match.match_id);
       const cached = cache[match.match_id];
-      if (isReusableMatchCache(cached, memberNumber)) {
+      if (isSameOwnerCache(cached, memberNumber)) {
         return { ...match, ...cached, _cached: true };
       }
       return buildResult(match, {}, memberNumber);
     });
 
-    return { results: combinedResults, log, classificationData, _not_logged_in_uspsa, fetchScope, fetchCoverage };
+    const fetchDiagnostics = {
+      extractedMatches: rawMatchList.length,
+      inRangeMatches: matchList.length,
+      completeCacheReused: cachedMatches.length,
+      partialRepairs: repairCounts.partial,
+      unknownRepairs: repairCounts.unknown,
+      newMatches: repairCounts.new,
+      expectedStages: expectedStageCount,
+      fetchedStages: fetchedStageCount,
+      failedStages: failedStageCount,
+      historyComplete: history.complete,
+    };
+    return { results: combinedResults, log, classificationData, _not_logged_in_uspsa, fetchScope, fetchCoverage, fetchDiagnostics };
 
   } finally {
     if (tabId) chrome.tabs.remove(tabId).catch(() => {});
@@ -1169,11 +1435,26 @@ async function refreshMatch(match, memberNumber, name) {
     const classifierMap = score.overall_pct != null
       ? await fetchMatchDef(match.match_id, push)
       : null;
-    const stages = score.overall_pct != null
+    const stageRepair = score.overall_pct != null
       ? await fetchStageData(tabId, match.match_id, memberNumber, name, score._divKey, score._stageOptions, push, classifierMap, score._divisionOptions)
-      : null;
-    const result = buildResult(match, { ...score, stages }, memberNumber);
+      : { stages: [], expectedCount: null, fetchedCount: 0, failedStages: [], state: 'unknown' };
+    const cache = await getCache();
+    const previous = isSameOwnerCache(cache[match.match_id], memberNumber) ? cache[match.match_id] : null;
+    const stages = mergeStageRepair(previous?.stages, stageRepair);
+    const result = {
+      ...(previous || {}),
+      ...buildResult(match, { ...score, stages }, memberNumber),
+      stages,
+      cache_completeness: {
+        schema_version: CACHE_SCHEMA_VERSION,
+        state: stageRepair.state,
+        expected_stage_count: stageRepair.expectedCount,
+        fetched_stage_count: stageRepair.fetchedCount,
+        failed_stages: stageRepair.failedStages,
+      },
+    };
     if (result.overall_pct != null) {
+      await migrateStageOverrides(match.match_id, previous?.stages, stages);
       await updateMatchCache(match.match_id, result);
     }
 
@@ -1202,13 +1483,7 @@ async function fetchMatchScore(tabId, matchId, memberNumber, name, push) {
   await sleep(1500);
 
   // ── Step 1: wait for page to render, find competitor in default (combined) view ──
-  let state = null;
-  for (let i = 0; i < 10; i++) {
-    state = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
-    if (state._cf)      { push(`     CF — waiting (${i + 1})`); await sleep(3000); continue; }
-    if (state._loading) { await sleep(1500); continue; }
-    break;
-  }
+  const state = await collectResultsPages(tabId, memberNumber, name, push);
 
   if (!state?._ready) {
     push(`     results/new did not load: ${state?._debug || 'unknown'}`);
@@ -1254,12 +1529,7 @@ async function fetchMatchScore(tabId, matchId, memberNumber, name, push) {
   }
 
   // ── Step 4: read competitor's stats from the now-filtered division view ──
-  let finalState = null;
-  for (let i = 0; i < 6; i++) {
-    finalState = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
-    if (finalState._loading) { await sleep(1200); continue; }
-    break;
-  }
+  let finalState = await collectResultsPages(tabId, memberNumber, name, push);
 
   if (!finalState?._found) {
     push(`     not found after division filter — falling back to combined stats`);
@@ -1271,7 +1541,10 @@ async function fetchMatchScore(tabId, matchId, memberNumber, name, push) {
 
   // Collect stage options (everything in #resultLevel that isn't Overall/Match)
   const stageOptions = (finalState.resultLevelOptions || state.resultLevelOptions)
-    .filter(o => /stage\s*\d+/i.test(o.text));
+    .filter(o => /stage\s*\d+/i.test(o.text))
+    .filter((option, index, options) => options.findIndex(candidate =>
+      String(candidate.value) === String(option.value) || candidate.text === option.text
+    ) === index);
 
   return {
     overall_pct: d.overall_pct,
@@ -1293,13 +1566,43 @@ async function fetchMatchScore(tabId, matchId, memberNumber, name, push) {
   };
 }
 
-// ── Extract match list from /associate/step2 ─────────────────────────────────
+// ── Extract one match-history page from /associate/step2 ─────────────────────
 function extractMatchList() {
   const DATE_FULL   = /^\d{4}-\d{2}-\d{2}$/;
   const UUID_FULL   = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const UUID_SEARCH = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  const UUID_SEARCH = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+  const spinner = document.querySelector('#spinner, .loading, .dataTables_processing');
+  if (spinner && getComputedStyle(spinner).display !== 'none') {
+    return { matches: [], _loading: true, _debug: 'history spinner visible' };
+  }
 
-  const uuidByDate = new Map();
+  const results = [];
+  const seen = new Set();
+  const add = (matchId, matchName, date) => {
+    const id = String(matchId || '').toLowerCase();
+    if (!UUID_FULL.test(id) || seen.has(id)) return;
+    seen.add(id);
+    results.push({ match_id: id, match_name: matchName || `Match ${id.substring(0, 8)}`, date: date || '' });
+  };
+
+  // Associate each UUID, date, and name from the same rendered row. This keeps
+  // multiple matches held on one date distinct.
+  for (const row of document.querySelectorAll('tr')) {
+    const cells = [...row.querySelectorAll('td')].map(cell => cell.innerText.trim());
+    const date = cells.find(cell => DATE_FULL.test(cell));
+    if (!date) continue;
+    const rowSource = `${row.innerHTML} ${[...row.attributes].map(attr => attr.value).join(' ')}`;
+    const uuid = rowSource.match(UUID_SEARCH)?.[0];
+    if (!uuid) continue;
+    const linkedName = [...row.querySelectorAll('a')]
+      .map(link => link.textContent.trim())
+      .find(text => text && text !== date && !UUID_FULL.test(text));
+    const name = linkedName || cells.find(cell => cell !== date && cell.length > 3 && !UUID_FULL.test(cell));
+    add(uuid, name, date);
+  }
+
+  // Some versions render structured page data before rows. Keep association
+  // within each object rather than joining independent date-keyed maps.
   for (const script of document.querySelectorAll('script:not([src])')) {
     const text = script.textContent;
     if (!text.includes('-')) continue;
@@ -1309,31 +1612,65 @@ function extractMatchList() {
         const vals = Object.values(obj).filter(v => typeof v === 'string');
         const uuid = vals.find(v => UUID_FULL.test(v));
         const date = vals.find(v => DATE_FULL.test(v));
-        if (uuid && date && !uuidByDate.has(date)) uuidByDate.set(date, uuid.toLowerCase());
+        const name = vals.find(v => v !== uuid && v !== date && v.length > 3);
+        if (uuid && date) add(uuid, name, date);
       } catch (_) {}
     }
   }
 
-  const nameByDate = new Map();
-  for (const row of document.querySelectorAll('tr')) {
-    const cells = Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim());
-    const date  = cells.find(c => DATE_FULL.test(c));
-    if (!date) continue;
-    const name  = cells.find(c => c !== date && c.length > 3 && !UUID_FULL.test(c));
-    if (name && !nameByDate.has(date)) nameByDate.set(date, name);
+  const historyTable = [...document.querySelectorAll('table')].find(table =>
+    [...table.querySelectorAll('tr')].some(row => DATE_FULL.test(row.textContent.trim().split(/\s+/).find(token => DATE_FULL.test(token)) || ''))
+  );
+  const wrapper = historyTable?.closest('.dataTables_wrapper, .card, .panel') || historyTable?.parentElement?.parentElement || document;
+  const nextControl = [...wrapper.querySelectorAll('a, button')].find(control => {
+    const label = `${control.textContent || ''} ${control.getAttribute('aria-label') || ''} ${control.getAttribute('rel') || ''}`.trim();
+    const disabled = control.disabled || control.getAttribute('aria-disabled') === 'true' ||
+      control.classList.contains('disabled') || control.parentElement?.classList.contains('disabled');
+    return !disabled && (/\bnext\b/i.test(label) || /^[›»>]$/.test((control.textContent || '').trim()));
+  });
+  const signature = results.map(match => match.match_id).join('|');
+  return { matches: results, signature, hasNextPage: !!nextControl, _ready: !!historyTable || results.length > 0 };
+}
+
+function clickNextMatchHistoryPage() {
+  const DATE_FULL = /\b\d{4}-\d{2}-\d{2}\b/;
+  const table = [...document.querySelectorAll('table')].find(candidate => DATE_FULL.test(candidate.textContent));
+  if (!table) return false;
+  const wrapper = table.closest('.dataTables_wrapper, .card, .panel') || table.parentElement?.parentElement || document;
+  const control = [...wrapper.querySelectorAll('a, button')].find(candidate => {
+    const label = `${candidate.textContent || ''} ${candidate.getAttribute('aria-label') || ''} ${candidate.getAttribute('rel') || ''}`.trim();
+    const disabled = candidate.disabled || candidate.getAttribute('aria-disabled') === 'true' ||
+      candidate.classList.contains('disabled') || candidate.parentElement?.classList.contains('disabled');
+    return !disabled && (/\bnext\b/i.test(label) || /^[›»>]$/.test((candidate.textContent || '').trim()));
+  });
+  if (!control) return false;
+  control.click();
+  return true;
+}
+
+async function collectMatchHistory(tabId, push) {
+  const matches = new Map();
+  const pageSignatures = new Set();
+
+  for (let pageNumber = 1; pageNumber <= MAX_HISTORY_PAGES; pageNumber++) {
+    let page = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      page = await runInTab(tabId, extractMatchList);
+      if (!page?._loading && page?._ready && page.signature && !pageSignatures.has(page.signature)) break;
+      await sleep(400 + attempt * 150);
+    }
+    if (!page?._ready || !page.signature || pageSignatures.has(page.signature)) {
+      return { matches: [...matches.values()], complete: false, pagesRead: pageSignatures.size, reason: page?._debug || 'history page did not settle' };
+    }
+
+    pageSignatures.add(page.signature);
+    for (const match of page.matches || []) matches.set(match.match_id, match);
+    if (!page.hasNextPage) return { matches: [...matches.values()], complete: true, pagesRead: pageNumber };
+
+    const advanced = await runInTab(tabId, clickNextMatchHistoryPage);
+    if (!advanced) return { matches: [...matches.values()], complete: false, pagesRead: pageNumber, reason: 'next history page could not be selected' };
   }
 
-  const results = [];
-  for (const [date, uuid] of uuidByDate) {
-    results.push({ match_id: uuid, match_name: nameByDate.get(date) || `Match ${uuid.substring(0, 8)}`, date });
-  }
-
-  if (results.length === 0 && nameByDate.size > 0) {
-    const uuids = [...new Set([...document.body.innerHTML.matchAll(UUID_SEARCH)].map(m => m[0].toLowerCase()))];
-    [...nameByDate.entries()].forEach(([date, name], i) => {
-      if (uuids[i]) results.push({ match_id: uuids[i], match_name: name, date });
-    });
-  }
-
-  return results;
+  push(`Match history pagination exceeded ${MAX_HISTORY_PAGES} pages.`);
+  return { matches: [...matches.values()], complete: false, pagesRead: MAX_HISTORY_PAGES, reason: 'history page limit exceeded' };
 }

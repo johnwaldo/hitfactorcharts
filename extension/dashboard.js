@@ -242,6 +242,7 @@ let selectedFetchTimeline = '6m'; // pre-fetch request scope; independent of ana
 let last8Matches = false;       // post-fetch analytics limit; never truncates cached history
 let matchTypeOverrides = {};    // match_id -> manual type for otherwise unconfirmed matches
 let lastFetchScope = null;
+let lastFetchDiagnostics = null;
 let fetchCoverage = null;       // verified cumulative fetch intervals; null preserves pre-metadata behavior
 
 const FETCH_TIMELINE_PRESETS = Object.freeze({
@@ -632,7 +633,13 @@ function stageKey(stage, index) {
 }
 
 function getStageOverride(match, stage, index) {
-  return stageOverrides?.[match.match_id]?.[stageKey(stage, index)] || {};
+  const matchOverrides = stageOverrides?.[match.match_id];
+  if (!matchOverrides) return {};
+  const exact = matchOverrides[stageKey(stage, index)];
+  if (exact) return exact;
+  const num = stage?.num != null ? String(stage.num).padStart(2, '0') : String(index + 1).padStart(2, '0');
+  const numberKey = Object.keys(matchOverrides).find(key => key.startsWith(`${num}|`));
+  return numberKey ? matchOverrides[numberKey] : {};
 }
 
 function isStageIncluded(match, stage, index) {
@@ -961,6 +968,7 @@ fetchBtn.addEventListener('click', async () => {
 
     const { results, log, fetchScope } = response.data;
     lastFetchScope = fetchScope || fetchTimeline;
+    lastFetchDiagnostics = response.data.fetchDiagnostics || null;
     fetchCoverage = normalizeFetchCoverage(response.data.fetchCoverage);
     ensureAvailableDatePreset();
     renderDateRangeFilter();
@@ -1831,7 +1839,10 @@ function updateStatusCounts(verb) {
   const fetchNote        = lastFetchScope
     ? ` · Fetch ${lastFetchScope.label}: ${lastFetchScope.inRangeCount ?? '?'} in range`
     : '';
-  setStatus(`${prefix}${divisionNote} ${uspsa} USPSA match(es) — ${scored} with scores${checkedNote}.${unconfirmedNote}${skippedNote}${fetchNote}`, 'success');
+  const detailNote = lastFetchDiagnostics
+    ? ` · Matches: ${lastFetchDiagnostics.extractedMatches} extracted, ${lastFetchDiagnostics.completeCacheReused} complete cached, ${lastFetchDiagnostics.partialRepairs} partial repaired, ${lastFetchDiagnostics.unknownRepairs} legacy repaired, ${lastFetchDiagnostics.newMatches} new · Stages: ${lastFetchDiagnostics.fetchedStages}/${lastFetchDiagnostics.expectedStages} fetched, ${lastFetchDiagnostics.failedStages} failed`
+    : '';
+  setStatus(`${prefix}${divisionNote} ${uspsa} USPSA match(es) — ${scored} with scores${checkedNote}.${unconfirmedNote}${skippedNote}${fetchNote}${detailNote}`, 'success');
 }
 
 
