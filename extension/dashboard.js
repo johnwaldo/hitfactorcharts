@@ -233,7 +233,7 @@ async function restoreFromSync() {
 let currentView      = 'ranked'; // 'ranked' | 'all'
 let deselectedMatches = new Set(); // match IDs manually excluded from charts
 let stageOverrides    = {};     // match_id -> stage key -> { included: false, note: string }
-let selectedDiv       = null;     // canonical division key (null = All)
+let selectedDiv       = null;     // canonical division key (null = no selection)
 let selectedDatePreset = '6m';   // analytics range; resets to six months on dashboard load
 let classificationData = null;  // data from uspsa.org/classification/[memberNumber]
 let classifiersOnly  = false;   // when true, charts show only classifier stage scores
@@ -250,8 +250,6 @@ const FETCH_TIMELINE_PRESETS = Object.freeze({
   '3m':  { label: '3 mo',         months: 3 },
   '6m':  { label: '6 mo',         months: 6 },
   '1y':  { label: '1 yr',         months: 12 },
-  '3y':  { label: '3 yr',         months: 36 },
-  'all': { label: 'all time',     months: null },
 });
 
 function normalizeFetchTimeline(value) {
@@ -261,8 +259,8 @@ function normalizeFetchTimeline(value) {
 function resolveFetchTimeline(value, referenceDate = new Date()) {
   const normalized = normalizeFetchTimeline(value);
   const preset = FETCH_TIMELINE_PRESETS[normalized];
-  const end = preset.months == null ? null : localDateOnly(referenceDate);
-  const start = end == null ? null : subtractCalendarMonths(end, preset.months);
+  const end = localDateOnly(referenceDate);
+  const start = subtractCalendarMonths(end, preset.months);
   return { value: normalized, label: preset.label, start, end };
 }
 
@@ -367,7 +365,7 @@ function divisionLabel(psDiv) {
 }
 
 function matchesSelectedDivision(match) {
-  return !selectedDiv || normalizeDivision(match?.division) === selectedDiv;
+  return Boolean(selectedDiv) && normalizeDivision(match?.division) === selectedDiv;
 }
 
 // Compute field-strength-adjusted stage percentage.
@@ -898,8 +896,14 @@ fetchTimelineSelect.addEventListener('change', () => {
 fetchBtn.addEventListener('click', async () => {
   const memberNumber = memberInput.value.trim().toUpperCase();
   const name         = nameInput.value.trim();
+  selectedDiv = normalizeDivision(divisionFilter.value);
   selectedFetchTimeline = normalizeFetchTimeline(fetchTimelineSelect.value);
   const fetchTimeline = resolveFetchTimeline(selectedFetchTimeline);
+  if (!selectedDiv) {
+    setStatus('Please select a USPSA division before fetching scores.', 'error');
+    divisionFilter.focus();
+    return;
+  }
   if (!memberNumber && !name) { setStatus('Please enter your USPSA member number and/or your name.', 'error'); return; }
 
   // Dismiss onboarding permanently once the user initiates a fetch
@@ -1007,8 +1011,6 @@ const DATE_RANGE_PRESETS = Object.freeze({
   '3m':  { label: '3 mo',         months: 3,  fileTag: 'last 3 months' },
   '6m':  { label: '6 mo',         months: 6,  fileTag: 'last 6 months' },
   '1y':  { label: '1 yr',         months: 12, fileTag: 'last 1 year' },
-  '3y':  { label: '3 yr',         months: 36, fileTag: 'last 3 years' },
-  'all': { label: 'all time',     months: null, fileTag: 'all time' },
 });
 
 function normalizeDateOnly(value) {
@@ -1075,7 +1077,6 @@ function isDatePresetAvailable(presetKey, referenceDate = new Date()) {
   const preset = DATE_RANGE_PRESETS[presetKey];
   if (!preset) return false;
   if (!fetchCoverage || fetchCoverage.allTime) return true;
-  if (preset.months == null) return false;
   const end = localDateOnly(referenceDate);
   const start = subtractCalendarMonths(end, preset.months);
   return fetchCoverage.intervals.some(interval => interval.start <= start && interval.end >= end);
@@ -1089,7 +1090,6 @@ function ensureAvailableDatePreset(referenceDate = new Date()) {
 
 function activeDateBounds(referenceDate = new Date()) {
   const preset = DATE_RANGE_PRESETS[selectedDatePreset] || DATE_RANGE_PRESETS['6m'];
-  if (preset.months == null) return null;
   const end = localDateOnly(referenceDate);
   return { start: subtractCalendarMonths(end, preset.months), end };
 }

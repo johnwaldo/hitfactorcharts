@@ -26,7 +26,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 - **Match type detection** — identifies USPSA, IDPA, IPSC, Steel Challenge, 3-Gun, PCSL, ICORE matches; non-USPSA matches are shown in history but excluded from charts
 - **Manual type correction** — classify an unconfirmed Match History row as USPSA or another supported sport; later full fetches skip manually confirmed non-USPSA matches
 - **Filter matches** — checkboxes let you include or exclude individual matches from charts without deleting them
-- **Readable date ranges** — charts default to six months with one-click presets for one month, three months, six months, one year, three years, and all time
+- **Readable date ranges** — charts default to six months with one-click presets for one month, three months, six months, and one year
 - **Last 8 analytics** — focus every chart, summary, classifier view, and CSV export on your eight most recent qualifying matches without re-fetching or trimming Match History
 - **Export as image** — save any match or individual stage as a PNG card (floppy-disk button on each match row)
 - **Export as CSV** — download all chart-visible data as a flat CSV (one row per stage) including CM numbers, USPSA %, HF, hit counts, adjusted %, and the selected reference division, class, HF, normalized HF, and benchmark method
@@ -106,13 +106,13 @@ The Hit Factor Charts icon will appear in your Chrome toolbar. Pin it for easy a
 
 3. **Enter your member number and/or name** — type your USPSA member number (e.g. `A12345`) and/or your name as it appears on result sheets (e.g. `Smith, Jane`). At least one is required; providing both improves match accuracy.
 
-4. **Choose a Fetch timeline and click Fetch Scores** — the timeline defaults to **6 mo** and limits which PractiScore matches receive score and stage requests. The extension opens each in-range match's results page, selects your division, and records your score. Progress is shown in the status bar.
+4. **Choose your division and a Fetch timeline, then click Fetch Scores** — a division is required. The timeline defaults to **6 mo** and offers **Last 1 month**, **3 mo**, **6 mo**, and **1 yr**. It limits which PractiScore matches receive score and stage requests. The extension opens each in-range match's results page, selects your division, and records your score. Progress is shown in the status bar.
 
 5. **Explore your data** — the summary bar shows matches found, average %, best %, field-strength adjusted average, and your USPSA classification. The **Scored Matches / All Matches** toggle below the cards switches between member-number lookup results and all name-matched results.
 
 ### Filtering by division
 
-Use the **All Divisions** dropdown before the USPSA member-number field to focus the complete dashboard on Carry Optics, Limited Optics, Open, Production, or another USPSA division. The filter applies immediately to charts, statistics, classifier analysis, Match History, status counts, and CSV exports. It is saved locally and does not re-fetch or delete scores from other divisions.
+Choose a named USPSA division before fetching scores. The saved selection limits the complete dashboard to that division, including charts, statistics, classifier analysis, Match History, status counts, and CSV exports. Changing it does not re-fetch or delete scores from other divisions.
 
 ### Reading the chart summaries
 
@@ -133,11 +133,11 @@ Hit-zone percentages use the **reported hit-zone total** as their denominator. P
 
 ### Filtering by date
 
-Analytics open on the most recent **6 mo** so trends stay readable. Use the buttons above the charts to switch to **Last 1 month**, **3 mo**, **6 mo**, **1 yr**, **3 yr**, or **all time**. The active range applies to every chart, summary statistic, classifier-only view, and chart CSV export without re-fetching or deleting older Match History records. After a successful fetch, ranges outside the verified fetched timeline are greyed out and explain on hover or keyboard focus that a longer Fetch timeline is required. Successful broader fetches remain available after later narrower fetches and after reload.
+Analytics open on the most recent **6 mo** so trends stay readable. Use the buttons above the charts to switch to **Last 1 month**, **3 mo**, **6 mo**, or **1 yr**. The active range applies to every chart, summary statistic, classifier-only view, and chart CSV export without re-fetching or deleting older Match History records. After a successful fetch, ranges outside the verified fetched timeline are greyed out and explain on hover or keyboard focus that a longer Fetch timeline is required. Successful broader fetches remain available after later narrower fetches and after reload.
 
 The **Last 8 matches** switch applies after the active analytics date range, division, Scored/All view, and manually selected matches. Turn it on to use the most recent eight qualifying matches across every chart, summary, classifier analysis, and chart CSV export. If fewer than eight qualify, all available matches are used. The preference is remembered, while Match History and cached records remain complete.
 
-The **Fetch timeline** dropdown beside **Fetch Scores** is separate: it limits network requests before a fetch begins and remembers your last choice. A narrower fetch merges new results with older cached Match History instead of deleting it. When you later choose a broader timeline, every available history page is traversed and same-date matches remain separate. Matches explicitly recorded as complete for the same member are reused without score or stage requests. Legacy, unknown, or partial records are repaired non-destructively, preserving successful stages and stage filters if a retry remains incomplete. The status and progress log report extracted and in-range matches separately from complete cache reuse, repairs, expected stages, fetched stages, and failures. Changing the dropdown or Last 8 switch alone does not make a request. **all time** expands discovery without discarding reusable cached matches, and refreshing one match remains unrestricted.
+The **Fetch timeline** dropdown beside **Fetch Scores** is separate: it limits network requests before a fetch begins and remembers your last choice. A narrower fetch merges new results with older cached Match History instead of deleting it. When you later choose a broader timeline, every available history page is traversed and same-date matches remain separate. Matches explicitly recorded as complete for the same member are reused without score or stage requests. Legacy, unknown, or partial records are repaired non-destructively, preserving successful stages and stage filters if a retry remains incomplete. The status and progress log report extracted and in-range matches separately from complete cache reuse, repairs, expected stages, fetched stages, and failures. Changing the dropdown or Last 8 switch alone does not make a request, and refreshing one match remains unrestricted.
 
 ### Exporting data
 

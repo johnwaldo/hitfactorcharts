@@ -44,17 +44,18 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 
 ## Analytics date range
 
-- Keep all six presets immediately visible above the charts in this order: **Last 1 month**, **3 mo**, **6 mo**, **1 yr**, **3 yr**, and **all time**.
+- Keep four presets immediately visible above the charts in this order: **Last 1 month**, **3 mo**, **6 mo**, and **1 yr**.
 - Activate **6 mo** on every dashboard load. Exactly one preset must expose a visible active state and `aria-pressed="true"`.
 - Use compact native buttons with a clear keyboard focus ring. The group wraps at narrow widths rather than becoming a dropdown or creating horizontal page overflow.
 - Date-range changes update the existing cached analytics immediately. They do not hide or delete older Match History records.
-- After a complete paginated match-list extraction, persist validated cumulative fetch intervals (or an explicit successful all-time fetch). A later narrower fetch must not erase broader coverage; incomplete extraction and malformed or missing metadata preserve previous history and coverage until a complete fetch establishes new coverage.
+- After a complete paginated match-list extraction, persist validated cumulative fetch intervals. A later narrower fetch must not erase broader or legacy all-time coverage; incomplete extraction and malformed or missing metadata preserve previous history and coverage until a complete fetch establishes new coverage.
 - Only presets fully contained by verified coverage are selectable. Unavailable presets remain focusable with `aria-disabled="true"`, a greyed state, and the hover/focus explanation: “Fetch a longer timeline to use this range.” Do not use native `disabled`, which would hide that help from keyboard users.
 - If a bounded fetch makes the active preset unavailable, select the broadest verified available preset. Last 8, division, match selection, cache contents, and single-match refresh never affect coverage.
 
 ## Fetch timeline
 
-- Place the labelled native Fetch timeline select immediately before **Fetch Scores**. Use the same six labels as the analytics presets, default to **6 mo**, and persist the latest selection locally.
+- Require a named USPSA division before **Fetch Scores** can start. Use a non-selectable **Division** placeholder instead of an aggregate view, and preserve the selected division locally.
+- Place the labelled native Fetch timeline select immediately before **Fetch Scores**. Use the same four labels as the analytics presets, default to **6 mo**, and persist the latest selection locally. Normalize legacy unsupported timeline values to **6 mo**.
 - Fetch timeline controls pre-fetch request scope; analytics presets independently filter cached data. Keep that distinction explicit in status and documentation.
 - The current visible select value is the next fetch scope. Changing it alone makes no request.
 - Preserve older cache and Match History entries when a narrower timeline is fetched. Explicit single-match refresh remains unrestricted.
