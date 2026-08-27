@@ -4,6 +4,10 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+### Changed
+
+- Hit Zone Breakdown now preserves reported B, separate M/NS, and combined M+NS source data, leaves unavailable legacy fields blank, and uses a disclosed nonlinear visual scale to make smaller outcomes readable without changing raw percentages or exports.
+
 ## v1.6.6 — 2026-08-27
 
 ### Added

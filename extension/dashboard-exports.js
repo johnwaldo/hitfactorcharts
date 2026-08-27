@@ -233,13 +233,20 @@ function exportStageCard(match, stage) {
   const officialPct = clf && stage.clf_pct != null ? stage.clf_pct : null;
   const displayPct  = officialPct ?? stage.pct;
   const showMatchPct = officialPct != null && stage.pct != null;
+  const hit = (key, label, color, positiveOnly = false) => {
+    const value = reportedStageHit(stage, key);
+    if (value == null || (positiveOnly && value <= 0)) return false;
+    return { t: `${value}${label}`, c: color };
+  };
   const hits = [
-    stage.a  > 0 && { t: `${stage.a}A`,   c: '#4caf50' },
-    stage.c  > 0 && { t: `${stage.c}C`,   c: '#fdd835' },
-    stage.d  > 0 && { t: `${stage.d}D`,   c: '#ff9800' },
-    stage.m  > 0 && { t: `${stage.m}M`,   c: '#f44336' },
-    stage.ns > 0 && { t: `${stage.ns}NS`, c: '#f44336' },
-    stage.p  > 0 && { t: `${stage.p}P`,   c: '#f44336' },
+    hit('a', 'A', '#2eaf65'),
+    hit('b', 'B', '#3b82f6', true),
+    hit('c', 'C', '#d4a900'),
+    hit('d', 'D', '#f97316'),
+    hit('m', 'M', '#ef4444'),
+    hit('ns', 'NS', '#d946ef'),
+    !stageReportsHit(stage, 'm') && !stageReportsHit(stage, 'ns') && hit('m_ns', ' M+NS', '#8b5cf6'),
+    hit('p', 'P', '#f44336'),
   ].filter(Boolean);
 
   let H = PAD;
@@ -351,7 +358,7 @@ function exportChartCSV() {
   // In classifiersOnly mode, only classifier stages are included.
   const headers = [
     'Date', 'Match', 'Division', 'Class', 'Overall %', 'Div %', 'Place', 'Div Place',
-    'Stage', 'Stage HF', 'Stage Match %', 'Stage Time', 'A', 'C', 'D', 'M', 'NS', 'P',
+    'Stage', 'Stage HF', 'Stage Match %', 'Stage Time', 'A', 'B', 'C', 'D', 'M', 'NS', 'M+NS', 'P',
     'Stage Included', 'Stage Note', 'CM #', 'CM Name', 'USPSA %',
     'Adjusted %', 'Adjusted Ref Division', 'Adjusted Ref Class', 'Adjusted Ref HF',
     'Adjusted Normalized HF', 'Adjusted Method',
@@ -387,8 +394,14 @@ function exportChartCSV() {
         s.hf    != null ? s.hf.toFixed(4)   : '',
         s.pct   != null ? s.pct.toFixed(2)  : '',
         s.time  != null ? s.time.toFixed(2) : '',
-        s.a  ?? '', s.c  ?? '', s.d  ?? '',
-        s.m  ?? '', s.ns ?? '', s.p  ?? '',
+        reportedStageHit(s, 'a') ?? '',
+        reportedStageHit(s, 'b') ?? '',
+        reportedStageHit(s, 'c') ?? '',
+        reportedStageHit(s, 'd') ?? '',
+        reportedStageHit(s, 'm') ?? '',
+        reportedStageHit(s, 'ns') ?? '',
+        stageReportsHit(s, 'm') || stageReportsHit(s, 'ns') ? '' : (reportedStageHit(s, 'm_ns') ?? ''),
+        reportedStageHit(s, 'p') ?? '',
         included ? 'Yes' : 'No',
         override.note || '',
         clf?.number || '',

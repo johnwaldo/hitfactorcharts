@@ -36,6 +36,10 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Show GM/M/A/B/C/D context only for nationally normalized `clf_pct` values. Match-relative classifier fallbacks must be identified as such and must not receive inferred class labels.
 - Place **Adjusted % Only** beside **Classifiers Only** as matching native-checkbox switches. Both controls expose visible keyboard focus, wrap together at narrow widths, and never create page-level overflow.
 - Adjusted-only and classifiers-only modes are mutually exclusive. Adjusted-only displays cached adjusted points without raw fallback and uses a clear multi-line empty state when fewer than two usable points exist.
+- Hit Zone Breakdown stores and exports raw reported counts only. Source-column availability is part of each refreshed stage record; legacy records without it are unknown, and combined M+NS data must never be split into invented M and NS values.
+- The hit-zone denominator is the reported A/B/C/D/M/NS or combined M+NS total. Procedural penalties remain outside it and are disclosed in chart help and tooltips.
+- Hit-zone geometry transforms cumulative boundaries, never individual stored values: raw 0–50% maps linearly to 0–30% visual height, and raw 50–100% maps linearly to 30–100%. Raw ticks render at transformed positions, ordering is stable, and the cumulative endpoint remains 100%.
+- Use distinct theme-safe colours and stable order for A, conditional positive B, C, D, separate M, separate NS, and combined M+NS. Tooltips and exports retain exact raw counts and percentages.
 
 ## Analytics date range
 

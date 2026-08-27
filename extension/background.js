@@ -335,12 +335,18 @@ function getResultsNewState(mem, nm) {
     hf:    ths.findIndex(h => /^(hf|hit\s*factor)$/.test(h)),
     time:  ths.findIndex(h => /^time$/.test(h)),
     a:     ths.findIndex(h => h === 'a'),
+    b:     ths.findIndex(h => h === 'b'),
     c:     ths.findIndex(h => h === 'c'),
     d:     ths.findIndex(h => h === 'd'),
     m:     ths.findIndex(h => h === 'm'),
-    ns:    ths.findIndex(h => h === 'ns' || h === 'n/s' || h === 'ns/m'),
+    ns:    ths.findIndex(h => h === 'ns' || h === 'n/s'),
+    m_ns:  ths.findIndex(h => /^(?:m\s*[+/&]\s*ns|ns\s*[+/&]\s*m)$/.test(h)),
     p:     ths.findIndex(h => h === 'p' || h === 'proc' || h === 'pen'),
   };
+
+  const hitColumns = Object.fromEntries(
+    ['a', 'b', 'c', 'd', 'm', 'ns', 'm_ns', 'p'].map(key => [key, hi[key] >= 0])
+  );
 
   let rows = Array.from(table.querySelectorAll('tbody tr'));
   if (!rows.length) rows = Array.from(table.querySelectorAll('tr')).slice(1);
@@ -351,16 +357,18 @@ function getResultsNewState(mem, nm) {
 
   function parseRow(row) {
     const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
-    const out   = { total };
+    const out   = { total, hit_columns: hitColumns };
     if (hi.div  >= 0) out.division = cells[hi.div] || '';
     if (hi.cls  >= 0) out.class_   = cells[hi.cls] || '';
     if (hi.hf   >= 0) out.hf       = parseFloat(cells[hi.hf])   || null;
     if (hi.time >= 0) out.time     = parseFloat(cells[hi.time])  || null;
     if (hi.a    >= 0) out.a        = parseInt(cells[hi.a])   || 0;
+    if (hi.b    >= 0) out.b        = parseInt(cells[hi.b])   || 0;
     if (hi.c    >= 0) out.c        = parseInt(cells[hi.c])   || 0;
     if (hi.d    >= 0) out.d        = parseInt(cells[hi.d])   || 0;
     if (hi.m    >= 0) out.m        = parseInt(cells[hi.m])   || 0;
     if (hi.ns   >= 0) out.ns       = parseInt(cells[hi.ns])  || 0;
+    if (hi.m_ns >= 0) out.m_ns     = parseInt(cells[hi.m_ns]) || 0;
     if (hi.p    >= 0) out.p        = parseInt(cells[hi.p])   || 0;
 
     if (hi.place >= 0) out.place = parseInt(cells[hi.place]) || null;
@@ -481,27 +489,35 @@ function scrapeHTMLResultsPage(mem, nm) {
     hf:    ths.findIndex(h => /^(hf|hit\s*factor)$/.test(h)),
     time:  ths.findIndex(h => /^time$/.test(h)),
     a:     ths.findIndex(h => h === 'a'),
+    b:     ths.findIndex(h => h === 'b'),
     c:     ths.findIndex(h => h === 'c'),
     d:     ths.findIndex(h => h === 'd'),
     m:     ths.findIndex(h => h === 'm'),
-    ns:    ths.findIndex(h => h === 'ns' || h === 'n/s' || h === 'ns/m'),
+    ns:    ths.findIndex(h => h === 'ns' || h === 'n/s'),
+    m_ns:  ths.findIndex(h => /^(?:m\s*[+/&]\s*ns|ns\s*[+/&]\s*m)$/.test(h)),
     p:     ths.findIndex(h => h === 'p' || h === 'proc' || h === 'pen'),
   };
+
+  const hitColumns = Object.fromEntries(
+    ['a', 'b', 'c', 'd', 'm', 'ns', 'm_ns', 'p'].map(key => [key, hi[key] >= 0])
+  );
 
   const total = rows.length;
 
   function parseRow(row) {
     const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
-    const out = { total };
+    const out = { total, hit_columns: hitColumns };
     if (hi.div  >= 0) out.division = cells[hi.div] || '';
     if (hi.cls  >= 0) out.class_   = cells[hi.cls] || '';
     if (hi.hf   >= 0) out.hf       = parseFloat(cells[hi.hf]) || null;
     if (hi.time >= 0) out.time     = parseFloat(cells[hi.time]) || null;
     if (hi.a    >= 0) out.a        = parseInt(cells[hi.a])  || 0;
+    if (hi.b    >= 0) out.b        = parseInt(cells[hi.b])  || 0;
     if (hi.c    >= 0) out.c        = parseInt(cells[hi.c])  || 0;
     if (hi.d    >= 0) out.d        = parseInt(cells[hi.d])  || 0;
     if (hi.m    >= 0) out.m        = parseInt(cells[hi.m])  || 0;
     if (hi.ns   >= 0) out.ns       = parseInt(cells[hi.ns]) || 0;
+    if (hi.m_ns >= 0) out.m_ns     = parseInt(cells[hi.m_ns]) || 0;
     if (hi.p    >= 0) out.p        = parseInt(cells[hi.p])  || 0;
     // Place: dedicated column or leading digits in first cell
     if (hi.place >= 0) out.place = parseInt(cells[hi.place]) || null;
@@ -738,12 +754,15 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
       time:            d.time ?? null,
       hf:              d.hf   ?? null,
       pct:             d.overall_pct ?? null,
-      a:               d.a  ?? 0,
-      c:               d.c  ?? 0,
-      d:               d.d  ?? 0,
-      m:               d.m  ?? 0,
-      ns:              d.ns ?? 0,
-      p:               d.p  ?? 0,
+      a:               d.a  ?? null,
+      b:               d.b  ?? null,
+      c:               d.c  ?? null,
+      d:               d.d  ?? null,
+      m:               d.m  ?? null,
+      ns:              d.ns ?? null,
+      m_ns:            d.m_ns ?? null,
+      p:               d.p  ?? null,
+      hit_columns:     d.hit_columns,
       gm_median_hf,
       xdiv_benchmarks,
       is_classifier:   null,

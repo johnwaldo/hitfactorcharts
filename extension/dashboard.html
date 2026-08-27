@@ -393,6 +393,12 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
+    .chart-scale-note {
+      margin: -6px 0 4px;
+      color: #8a9bb0;
+      font-size: 11px;
+      line-height: 1.45;
+    }
 
     /* ── Chart explanatory note ── */
     .chart-note {
@@ -674,11 +680,13 @@
     .classifier-badge { display: inline-block; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.03em; padding: 1px 5px; border-radius: 3px; background: #1a3a5c; color: #5ba3f5; border: 1px solid #2a5a8c; margin-right: 5px; vertical-align: middle; flex-shrink: 0; text-decoration: none; }
     a.classifier-badge:hover { background: #1e4a7a; border-color: #4a9eff; color: #90c8ff; text-decoration: none; }
     .stage-table tr:hover td { background: #1a1d27; }
-    .col-a  { color: #4caf50; }
-    .col-c  { color: #fdd835; }
-    .col-d  { color: #ff9800; }
-    .col-m  { color: #f44336; font-weight: 600; }
-    .col-ns { color: #f44336; font-weight: 600; }
+    .col-a  { color: #2eaf65; }
+    .col-b  { color: #3b82f6; }
+    .col-c  { color: #d4a900; }
+    .col-d  { color: #f97316; }
+    .col-m  { color: #ef4444; font-weight: 600; }
+    .col-ns { color: #d946ef; font-weight: 600; }
+    .col-mns { color: #8b5cf6; font-weight: 600; }
     .col-p  { color: #f44336; }
 
     /* ── Tooltip stage list ── */
@@ -1172,6 +1180,7 @@
     [data-theme="light"] .chart-summary .s-val { color: #1a1d27; }
     [data-theme="light"] .chart-summary .s-note { color: #4f596b; }
     [data-theme="light"] .chart-subtitle { color: #4f596b; }
+    [data-theme="light"] .chart-scale-note { color: #5a6478; }
     [data-theme="light"] #exportCsvBtn { color: #8a9bb0; border-color: #d0d4dc; }
     [data-theme="light"] #exportCsvBtn:hover { color: #16a34a; border-color: #16a34a; }
     [data-theme="light"] .match-list-header { border-bottom-color: #e0e2e8; color: #5a6478; }
@@ -1463,8 +1472,9 @@
   <div class="chart-section" id="chartHitZoneSection" style="display:none">
     <div class="chart-section-header">
       <h3>Hit Zone Breakdown</h3>
-      <span style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">A / C / D / M+NS distribution per match</span>
+      <span class="chart-subtitle">Reported hit-zone distribution per match · nonlinear visual scale</span>
     </div>
+    <div class="chart-scale-note">Raw 0–50% maps to 0–30% of visual height; raw 50–100% maps to 30–100%. Tooltips show exact raw counts and percentages. Procedural penalties are excluded from the reported hit-zone total.</div>
     <canvas id="chartHitZone" height="380"></canvas>
   </div>
 </div>

@@ -143,7 +143,15 @@ function renderMatchList() {
       // Speed gap vs GM: how many seconds behind GM pace (gm_median_hf - your_hf) / gm_median_hf * time
       function stageAccLoss(s) {
         if (!s.hf || s.hf <= 0) return null;
-        const penaltyPts = (s.c || 0) * 1 + (s.d || 0) * 2 + (s.m || 0) * 5 + (s.ns || 0) * 5;
+        const b = reportedStageHit(s, 'b');
+        const c = reportedStageHit(s, 'c');
+        const d = reportedStageHit(s, 'd');
+        const m = reportedStageHit(s, 'm');
+        const ns = reportedStageHit(s, 'ns');
+        const combined = m == null && ns == null ? reportedStageHit(s, 'm_ns') : null;
+        if ([b, c, d, m, ns, combined].every(value => value == null)) return null;
+        const penaltyPts = (b || 0) + (c || 0) + (d || 0) * 2
+          + (m || 0) * 5 + (ns || 0) * 5 + (combined || 0) * 5;
         return penaltyPts / s.hf;
       }
       function stageGmPct(s) {
@@ -153,6 +161,10 @@ function renderMatchList() {
 
       const hasGM = match.stages.some(s => s.gm_median_hf != null);
       const hasXdiv = match.stages.some(s => s.xdiv_benchmarks != null);
+      const hasB = match.stages.some(s => (reportedStageHit(s, 'b') || 0) > 0);
+      const hasM = match.stages.some(s => stageReportsHit(s, 'm'));
+      const hasNS = match.stages.some(s => stageReportsHit(s, 'ns'));
+      const hasCombined = match.stages.some(s => stageReportsHit(s, 'm_ns') && !stageReportsHit(s, 'm') && !stageReportsHit(s, 'ns'));
 
       // Build table using DOM to avoid XSS on stage names (F1)
       const table = document.createElement('table');
@@ -163,12 +175,18 @@ function renderMatchList() {
       const headers = ['Stage', 'Time', 'HF', '%'];
       if (hasXdiv) headers.push('Adj%');
       if (hasGM) headers.push('GM%', 'Acc Loss');
-      headers.push('A', 'C', 'D', 'M', 'NS', 'P');
+      headers.push('A');
+      if (hasB) headers.push('B');
+      headers.push('C', 'D');
+      if (hasM) headers.push('M');
+      if (hasNS) headers.push('NS');
+      if (hasCombined) headers.push('M+NS');
+      headers.push('P');
       headers.forEach((h, i) => {
         const th = document.createElement('th');
         th.textContent = h;
         if (i > 0) th.style.textAlign = 'right';
-        const colClass = { A: 'col-a', C: 'col-c', D: 'col-d', M: 'col-m', NS: 'col-ns', P: 'col-p' }[h];
+        const colClass = { A: 'col-a', B: 'col-b', C: 'col-c', D: 'col-d', M: 'col-m', NS: 'col-ns', 'M+NS': 'col-mns', P: 'col-p' }[h];
         if (colClass) th.className = colClass;
         if (h === 'Adj%') {
           th.title = 'Field-strength adjusted %\nNormalizes the best HF from any division at this match to your division using HHF ratios, giving you a more accurate classification read regardless of who showed up.';
@@ -298,7 +316,7 @@ function renderMatchList() {
           const accTd = document.createElement('td');
           if (accLoss != null) {
             const color = accLoss < 0.5 ? '#4caf50' : accLoss < 1.5 ? '#fdd835' : '#f44336';
-            accTd.innerHTML = `<span style="color:${color}" title="Seconds lost to non-A hits: (C×1 + D×2 + M×5 + NS×5) / HF">−${accLoss.toFixed(2)}s</span>`;
+            accTd.innerHTML = `<span style="color:${color}" title="Estimated seconds lost from reported non-A hits; combined M+NS remains combined">−${accLoss.toFixed(2)}s</span>`;
           } else {
             accTd.textContent = '—';
           }
@@ -307,17 +325,19 @@ function renderMatchList() {
 
         // Hit columns
         const hitCols = [
-          { val: s.a,  cls: 'col-a' },
-          { val: s.c,  cls: 'col-c' },
-          { val: s.d,  cls: 'col-d' },
-          { val: s.m,  cls: 'col-m' },
-          { val: s.ns, cls: 'col-ns' },
-          { val: s.p,  cls: 'col-p' },
-        ];
+          { val: reportedStageHit(s, 'a'), cls: 'col-a' },
+          hasB && { val: reportedStageHit(s, 'b'), cls: 'col-b' },
+          { val: reportedStageHit(s, 'c'), cls: 'col-c' },
+          { val: reportedStageHit(s, 'd'), cls: 'col-d' },
+          hasM && { val: reportedStageHit(s, 'm'), cls: 'col-m' },
+          hasNS && { val: reportedStageHit(s, 'ns'), cls: 'col-ns' },
+          hasCombined && { val: stageReportsHit(s, 'm') || stageReportsHit(s, 'ns') ? null : reportedStageHit(s, 'm_ns'), cls: 'col-mns' },
+          { val: reportedStageHit(s, 'p'), cls: 'col-p' },
+        ].filter(Boolean);
         hitCols.forEach(({ val, cls }) => {
           const td = document.createElement('td');
           td.className = cls;
-          td.textContent = val || '—';
+          td.textContent = val == null ? '—' : String(val);
           tr.appendChild(td);
         });
 
