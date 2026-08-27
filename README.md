@@ -24,6 +24,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 - **Consistency card** — match-to-match score variance and accuracy loss metrics
 - **Accuracy trend** — hit factor breakdown over time (A/C/D/M/NS/P)
 - **Match type detection** — identifies USPSA, IDPA, IPSC, Steel Challenge, 3-Gun, PCSL, ICORE matches; non-USPSA matches are shown in history but excluded from charts
+- **Manual type correction** — classify an unconfirmed Match History row as USPSA or another supported sport; later full fetches skip manually confirmed non-USPSA matches
 - **Filter matches** — checkboxes let you include or exclude individual matches from charts without deleting them
 - **Readable date ranges** — charts default to six months with one-click presets for one month, three months, six months, one year, three years, and all time
 - **Last 8 analytics** — focus every chart, summary, classifier view, and CSV export on your eight most recent qualifying matches without re-fetching or trimming Match History
@@ -141,6 +142,8 @@ The **Fetch timeline** dropdown beside **Fetch Scores** is separate: it limits n
 ### Filtering matches
 
 Each USPSA match row has a checkbox. Uncheck a match to exclude it from charts without deleting it.
+
+Rows that remain **Unknown** after automatic match-type detection include a **Type** selector. Choose USPSA, IDPA, IPSC, Steel Challenge, 3-Gun, PCSL, or ICORE to update chart inclusion, badges, and status counts immediately without fetching. The choice is stored separately from score history; **Keep unconfirmed** resets to automatic behavior without deleting cached scores or stages. Later full Fetch Scores runs skip matches manually classified as non-USPSA, reducing unnecessary PractiScore requests, while explicit single-match refresh remains available.
 
 ### Filtering stages
 
