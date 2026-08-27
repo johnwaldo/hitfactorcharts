@@ -381,7 +381,7 @@ function matchesSelectedDivision(match) {
 // normalized result prevents a weak GM/M stage from inflating the percentage and
 // guarantees a natural 0–100 range because the own-division winner is eligible.
 //
-// Returns { adjPct, adjClass, refDiv, refClass, refHF, normHF, method } or null.
+// Returns { adjPct, refDiv, refClass, refHF, normHF, method } or null.
 function computeAdjustedPct(stage, shooterDiv) {
   if (isClassifierStage(stage)) return null;
   if (!stage.hf || stage.hf <= 0) return null;
@@ -417,24 +417,12 @@ function computeAdjustedPct(stage, shooterDiv) {
   const adjPct = Math.min((stage.hf / bestNormalizedRef) * 100, 100);
   return {
     adjPct,
-    adjClass: classLetterForPct(adjPct),
     refDiv:   bestRefDiv,
     refClass: bestRefClass,
     refHF:    bestRefHF,
     normHF:   bestNormalizedRef,
     method:   'top_hf',
   };
-}
-
-// Return USPSA classification letter for a given percentage
-function classLetterForPct(pct) {
-  if (pct >= 95) return 'GM';
-  if (pct >= 85) return 'M';
-  if (pct >= 75) return 'A';
-  if (pct >= 60) return 'B';
-  if (pct >= 40) return 'C';
-  if (pct >= 2)  return 'D';
-  return 'U';
 }
 
 // ── USPSA Classifier lookup ───────────────────────────────────────────────────

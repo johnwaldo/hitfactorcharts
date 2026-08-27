@@ -163,6 +163,14 @@ function warpPct(v, pts) {
 
 function fmtPct(pct) {
   if (pct == null) return '—';
+  return `<span style="color:#8a9bb0">${pct.toFixed(1)}%</span>`;
+}
+
+// Official classifier percentages use USPSA's national reference HF and may
+// therefore receive classification-band context. Match-relative values must
+// use fmtPct() instead.
+function fmtClassifierPct(pct) {
+  if (pct == null) return '—';
   const b = bandForPct(pct);
   const color = b ? b.text.replace('0.55', '1') : '#8a9bb0';
   const label = b ? ` <small style="font-size:9px;opacity:0.75">${b.label}</small>` : '';
@@ -379,8 +387,8 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
         const unit = h.valueUnit;
         // Use escHtml for untrusted strings (match names, stage names) in tooltip innerHTML (F1)
         const multiMatchRows = h.multiMatch ? h.multiMatch.map(m => {
-          if (unit === '%') {
-            const b = bandForPct(m.y);
+          if (unit === 'classifier%') {
+            const b = m.isOfficial ? bandForPct(m.y) : null;
             const c = b ? b.text.replace('0.55', '1') : '#8a9bb0';
             return `<div class="tt-stage-row"><span class="tt-stage-name">${escHtml(m.label)}</span>`
               + `<span style="color:${c}">${m.y != null ? m.y.toFixed(1) + '%' + (b ? ' ' + b.label : '') : '—'}</span></div>`;
@@ -394,9 +402,10 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
         }).join('') : '';
 
         if (h.multiMatch) {
-          const classBand = unit === '%' ? bandForPct(h.y) : null;
+          const classBand = unit === 'classifier%' && h.multiMatch.every(m => m.isOfficial)
+            ? bandForPct(h.y) : null;
           const classLabel = classBand ? ` <span style="color:${classBand.text};font-size:10px">${classBand.label}</span>` : '';
-          const avgLine = unit === '%'
+          const avgLine = unit === 'classifier%'
             ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}%${classLabel} <span style="font-size:11px;color:#666">avg (div)</span></div>`
             : unit === 'match%'
             ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}% <span style="font-size:11px;color:#aab3c2">average match score</span></div>`
@@ -408,14 +417,14 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
             <div class="tt-stages">${multiMatchRows}</div>
           `;
         } else {
-          const hasOfficialClassContext = unit === '%' || (unit === 'classifier%' && h.isOfficial);
+          const hasOfficialClassContext = unit === 'classifier%' && h.isOfficial;
           const classBand = hasOfficialClassContext ? bandForPct(h.y) : null;
           const classLabel = classBand
             ? `<span style="color:${classBand.text};font-size:10px;margin-left:6px">${classBand.label}</span>` : '';
-          const mainVal = unit === '%'
-            ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}%${classLabel} <span style="font-size:11px;color:#666">(div)</span></div>`
-            : unit === 'classifier%'
+          const mainVal = unit === 'classifier%'
             ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}%${classLabel} <span style="font-size:11px;color:#aab3c2">${h.isOfficial ? 'official USPSA' : 'match-relative'}</span></div>`
+            : unit === '%'
+            ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}% <span style="font-size:11px;color:#666">comparison</span></div>`
             : unit === 'match%'
             ? `<div class="tt-score" style="color:${h.color}">${h.y.toFixed(1)}% <span style="font-size:11px;color:#aab3c2">match performance</span></div>`
             : unit === 'top%'
