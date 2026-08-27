@@ -174,7 +174,7 @@ function renderMatchList() {
       const headerRow = document.createElement('tr');
       const headers = ['Stage', 'Time', 'HF', '%'];
       if (hasXdiv) headers.push('Adj%');
-      if (hasGM) headers.push('GM%', 'Acc Loss');
+      if (hasGM) headers.push('HF vs GM', 'Acc Loss');
       headers.push('A');
       if (hasB) headers.push('B');
       headers.push('C', 'D');
@@ -189,11 +189,15 @@ function renderMatchList() {
         const colClass = { A: 'col-a', B: 'col-b', C: 'col-c', D: 'col-d', M: 'col-m', NS: 'col-ns', 'M+NS': 'col-mns', P: 'col-p' }[h];
         if (colClass) th.className = colClass;
         if (h === 'Adj%') {
-          th.title = 'Field-strength adjusted %\nNormalizes the best HF from any division at this match to your division using HHF ratios, giving you a more accurate classification read regardless of who showed up.';
+          th.title = 'Field-strength adjusted %\nNormalizes the best HF from any division at this match to your division using HHF ratios. It is match performance, not a USPSA classification.';
           th.style.cursor = 'help';
         }
         if (h === '%') {
-          th.title = 'Raw stage % — your HF vs the top HF in your division only.\nInflated when no GM/Master is present in your division.';
+          th.title = 'Raw stage % — your HF vs the top HF in your division only. This is match performance, not a USPSA classification.';
+          th.style.cursor = 'help';
+        }
+        if (h === 'HF vs GM') {
+          th.title = 'Performance against the captured median GM hit factor for this stage. It is a separate benchmark comparison, not a USPSA classification.';
           th.style.cursor = 'help';
         }
         headerRow.appendChild(th);
@@ -271,7 +275,7 @@ function renderMatchList() {
         // % cell — show official USPSA clf_pct as primary when available, match % as secondary
         const pctTd = tr.children[3];
         if (clf && s.clf_pct != null) {
-          pctTd.innerHTML = `${fmtPct(s.clf_pct)}<br><small style="opacity:0.6" title="Match %">match: ${s.pct != null ? s.pct.toFixed(1) + '%' : '—'}</small>`;
+          pctTd.innerHTML = `${fmtClassifierPct(s.clf_pct)}<br><small style="opacity:0.6" title="Match %">match: ${s.pct != null ? s.pct.toFixed(1) + '%' : '—'}</small>`;
         } else {
           pctTd.innerHTML = fmtPct(s.pct);
         }
@@ -281,13 +285,11 @@ function renderMatchList() {
           const adj = computeAdjustedPct(s, match.division);
           const adjTd = document.createElement('td');
           if (adj) {
-            const b = bandForPct(adj.adjPct);
-            const color = b ? b.text.replace('0.55', '1') : '#8a9bb0';
-            adjTd.innerHTML = `<span style="color:${color}">${adj.adjPct.toFixed(1)}% <small style="font-size:9px;opacity:0.75">${adj.adjClass}</small></span>`;
+            adjTd.innerHTML = fmtPct(adj.adjPct);
             // Build detailed tooltip explaining the adjustment
-            adjTd.title = `Field-adjusted: your HF (${s.hf?.toFixed(4)}) vs top shooter in ${adj.refDiv} (${adj.refHF?.toFixed(4)} HF, ${adj.refClass || '?'} class)\n`
+            adjTd.title = `Field-adjusted: your HF (${s.hf?.toFixed(4)}) vs top match benchmark in ${adj.refDiv} (${adj.refHF?.toFixed(4)} HF; benchmark shooter reported ${adj.refClass || '?'} class)\n`
               + `Normalized to ${match.division}: ${adj.normHF?.toFixed(4)} HF\n`
-              + `${s.hf?.toFixed(4)} / ${adj.normHF?.toFixed(4)} = ${adj.adjPct.toFixed(1)}% (${adj.adjClass} class)`;
+              + `${s.hf?.toFixed(4)} / ${adj.normHF?.toFixed(4)} = ${adj.adjPct.toFixed(1)}% match performance`;
           } else if (clf) {
             adjTd.textContent = '—';
             adjTd.title = 'Classifier stage — official classifier percentages are already normalized against national division data, so adjusted % is not applied.';
@@ -299,13 +301,12 @@ function renderMatchList() {
         }
 
         if (hasGM) {
-          // GM% cell
+          // Actual GM benchmark comparison cell
           const gmPct = stageGmPct(s);
           const gmTd = document.createElement('td');
           if (gmPct != null) {
-            const color = gmPct >= 95 ? '#ffd700' : gmPct >= 85 ? '#e040fb' : gmPct >= 75 ? '#4caf50' : gmPct >= 60 ? '#4a9eff' : '#ff9800';
-            gmTd.innerHTML = `<span style="color:${color}">${gmPct.toFixed(1)}%</span>`;
-            gmTd.title = `Your HF vs median GM HF (${s.gm_median_hf?.toFixed(4)})`;
+            gmTd.innerHTML = fmtPct(gmPct);
+            gmTd.title = `HF vs actual GM benchmark: your HF compared with captured median GM HF (${s.gm_median_hf?.toFixed(4)}). This is not a USPSA classification.`;
           } else {
             gmTd.textContent = '—';
           }

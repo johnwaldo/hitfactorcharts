@@ -81,7 +81,7 @@ function _trunc(ctx, text, maxWidth) {
   return t + '\u2026';
 }
 
-function _cardColor(pct) {
+function _classifierCardColor(pct) {
   if (pct == null) return '#8a9bb0';
   if (pct >= 95) return '#ffd700';
   if (pct >= 85) return '#e040fb';
@@ -91,7 +91,7 @@ function _cardColor(pct) {
   return '#8a9bb0';
 }
 
-function _cardLabel(pct) {
+function _classifierCardLabel(pct) {
   if (pct == null) return '';
   if (pct >= 95) return 'GM';
   if (pct >= 85) return 'M';
@@ -176,13 +176,10 @@ function exportMatchCard(match) {
 
   if (hasScore) {
     y += 10;
-    const color = _cardColor(scorePct), label = _cardLabel(scorePct);
-    ctx.font = `bold 28px ${F}`; ctx.fillStyle = color;
+    ctx.font = `bold 28px ${F}`; ctx.fillStyle = '#8a9bb0';
     const ps = scorePct.toFixed(1) + '%';
     ctx.fillText(ps, ox + PAD, y + 24);
     const pw = ctx.measureText(ps).width;
-    ctx.font = `bold 12px ${F}`; ctx.fillStyle = color;
-    ctx.fillText(label, ox + PAD + pw + 6, y + 20);
     ctx.font = `9px ${F}`; ctx.fillStyle = '#555';
     ctx.fillText(hasExcludedStages(match) ? 'filtered %' : (match.div_pct != null ? 'div %' : 'overall %'), ox + PAD + pw + 6, y + 30);
     y += 30;
@@ -210,7 +207,7 @@ function exportMatchCard(match) {
       ctx.fillStyle = '#555';
       const hfStr = s.hf != null ? s.hf.toFixed(4) : '\u2014';
       ctx.fillText(hfStr, hfX - ctx.measureText(hfStr).width, y + 10);
-      ctx.fillStyle = _cardColor(pct);
+      ctx.fillStyle = clf && s.clf_pct != null ? _classifierCardColor(pct) : '#8a9bb0';
       const pStr = pct != null ? pct.toFixed(1) + '%' : '\u2014';
       ctx.fillText(pStr, pctX - ctx.measureText(pStr).width, y + 10);
       y += 20;
@@ -290,13 +287,17 @@ function exportStageCard(match, stage) {
   _dividerLine(ctx, ox + PAD, y, W - PAD * 2); y += 10;
 
   if (displayPct != null) {
-    const color = _cardColor(displayPct), label = _cardLabel(displayPct);
+    const isOfficialClassifier = officialPct != null;
+    const color = isOfficialClassifier ? _classifierCardColor(displayPct) : '#8a9bb0';
+    const label = isOfficialClassifier ? _classifierCardLabel(displayPct) : '';
     ctx.font = `bold 28px ${F}`; ctx.fillStyle = color;
     const ps = displayPct.toFixed(1) + '%';
     ctx.fillText(ps, ox + PAD, y + 26);
     const pw = ctx.measureText(ps).width;
-    ctx.font = `bold 13px ${F}`; ctx.fillStyle = color;
-    ctx.fillText(label, ox + PAD + pw + 6, y + 22);
+    if (label) {
+      ctx.font = `bold 13px ${F}`; ctx.fillStyle = color;
+      ctx.fillText(label, ox + PAD + pw + 6, y + 22);
+    }
     y += 32;
     if (showMatchPct) {
       ctx.font = `11px ${F}`; ctx.fillStyle = '#666';
