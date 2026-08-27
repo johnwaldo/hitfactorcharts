@@ -4,6 +4,21 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.6.6 — 2026-08-27
+
+### Added
+
+- A persisted **Last 8** switch focuses charts, summaries, classifier analysis, and CSV exports on the eight most recent qualifying matches without trimming Match History or cached data.
+- A separate **Fetch timeline** control limits new PractiScore requests to one month, three months, six months, one year, three years, or all time while preserving older cached history.
+- **Adjusted % Only** mode plots cached field-strength-adjusted results without falling back to raw match percentages.
+- Unconfirmed Match History rows can now be classified manually as USPSA, IDPA, IPSC, Steel Challenge, 3-Gun, PCSL, or ICORE. Non-USPSA choices prevent unnecessary requests on later full fetches.
+
+### Changed
+
+- Trend summaries now use documented percentage-point thresholds with an explicit **Stable** state, and dense charts space date labels by rendered width while retaining every point and tooltip.
+- Regular match and non-classifier charts now use clear linear 0–100% match-performance scales. USPSA class bands and class metadata remain exclusive to official classifier percentages.
+- Adjusted % summaries identify dominant GM or Master field context only when the underlying stage evidence supports it, with neutral wording for mixed or unavailable references.
+
 ## v1.6.5 — 2026-08-26
 
 ### Added
