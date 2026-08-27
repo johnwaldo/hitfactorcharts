@@ -1107,6 +1107,30 @@ function applyLast8Limit(records) {
   return last8Matches ? records.slice(-8) : records;
 }
 
+// Keep every chart surface and the CSV export on the same final filter pipeline.
+// Intermediate sets make empty-state explanations specific without mutating state.
+function selectAnalyticsRecords(referenceDate = new Date()) {
+  const chartableBase = allResults.filter(isChartable);
+  const selectedRecords = chartableBase.filter(r => !deselectedMatches.has(r.match_id));
+  const viewRecords = currentView === 'ranked'
+    ? selectedRecords.filter(r => r.found_by === 'member_number' && effectiveOverallPct(r) != null)
+    : selectedRecords.filter(r => effectiveOverallPct(r) != null || r.hf != null);
+  const divisionRecords = viewRecords.filter(matchesSelectedDivision).sort((a, b) => {
+    const da = parseDate(a.date), db = parseDate(b.date);
+    return (da && db) ? da - db : 0;
+  });
+  const rangeRecords = filterByActiveDateRange(divisionRecords, referenceDate);
+
+  return {
+    chartableBase,
+    selectedRecords,
+    viewRecords,
+    divisionRecords,
+    rangeRecords,
+    records: applyLast8Limit(rangeRecords),
+  };
+}
+
 function renderLast8Control(totalCount = null, visibleCount = null) {
   last8MatchesChk.checked = last8Matches;
   last8ToggleWrap.classList.toggle('active', last8Matches);
@@ -1178,24 +1202,9 @@ function renderAll() {
     return;
   }
 
-  // Level 2 filter: only chart USPSA/Hit Factor matches (excludes time-scored sports)
-  // Also exclude matches the user has manually deselected
-  const uspsaBase = allResults.filter(r =>
-    isChartable(r) &&
-    !deselectedMatches.has(r.match_id)
-  );
-
-  // 'ranked' = confirmed by member number, % score required
-  // 'all'    = any scored match (% or HF), including HF-only results
-  const chartable = currentView === 'ranked'
-    ? uspsaBase.filter(r => r.found_by === 'member_number' && effectiveOverallPct(r) != null)
-    : uspsaBase.filter(r => effectiveOverallPct(r) != null || r.hf != null);
-
-  const divs = [...new Set(chartable.map(r => normalizeDivision(r.division)).filter(Boolean))];
-  const sorted = chartable.filter(matchesSelectedDivision).sort((a, b) => {
-    const da = parseDate(a.date), db = parseDate(b.date);
-    return (da && db) ? da - db : 0;
-  });
+  const analyticsSelection = selectAnalyticsRecords();
+  const { viewRecords, divisionRecords: sorted, rangeRecords: rangeSorted, records: viewSorted } = analyticsSelection;
+  const divs = [...new Set(viewRecords.map(r => normalizeDivision(r.division)).filter(Boolean))];
   summaryBar.classList.add('visible');
   chartsEl.classList.add('visible');
   syncChartModeControls();
@@ -1227,8 +1236,6 @@ function renderAll() {
   }
 
   // Apply one shared range and optional recent-match limit to every analytics surface.
-  const rangeSorted = filterByActiveDateRange(sorted);
-  const viewSorted = applyLast8Limit(rangeSorted);
   renderLast8Control(rangeSorted.length, viewSorted.length);
 
   if (viewSorted.length === 0) {

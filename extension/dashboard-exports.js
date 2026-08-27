@@ -344,16 +344,27 @@ function exportStageCard(match, stage) {
 // Exports chart-visible match data as a flat CSV (one row per stage).
 // Respects the active division, date-range preset, and Last 8 preference.
 // Includes USPSA clf_pct when available (official % vs national reference HF).
+function describeEmptyChartCSVExport(selection) {
+  const preset = DATE_RANGE_PRESETS[selectedDatePreset] || DATE_RANGE_PRESETS['6m'];
+  const context = `${selectedDiv ? divisionLabel(selectedDiv) : 'all divisions'} in ${preset.label}`;
+
+  if (!allResults.length) return `CSV export skipped: no matches are loaded for ${context}. Fetch scores, then try again.`;
+  if (!selection.chartableBase.length) return `CSV export skipped: no chartable USPSA matches qualify for ${context}. Match History can include other match types.`;
+  if (!selection.selectedRecords.length) return `CSV export skipped: all chartable matches are unchecked. Recheck a USPSA match in Match History, then try again.`;
+  if (!selection.viewRecords.length) {
+    return currentView === 'ranked'
+      ? `CSV export skipped: ${context} has no member-number-confirmed scores in Scored Matches. Switch to All Matches to include name-matched results.`
+      : `CSV export skipped: ${context} has no matches with a score or hit factor.`;
+  }
+  if (!selection.divisionRecords.length) return `CSV export skipped: no ${divisionLabel(selectedDiv)} matches qualify in the current view.`;
+  if (!selection.rangeRecords.length) return `CSV export skipped: no qualifying matches fall within ${preset.label}. Choose a broader date range or fetch more history.`;
+  return `CSV export skipped: no classifier stages qualify for ${context}. Turn off Classifiers Only or select matches with classifier stages.`;
+}
+
 function exportChartCSV() {
-  const uspsaBase = allResults.filter(r => isChartable(r) && !deselectedMatches.has(r.match_id));
-  const chartable = currentView === 'ranked'
-    ? uspsaBase.filter(r => r.found_by === 'member_number' && effectiveOverallPct(r) != null)
-    : uspsaBase.filter(r => effectiveOverallPct(r) != null || r.hf != null);
-  const sorted = chartable.filter(matchesSelectedDivision).sort((a, b) => {
-    const da = parseDate(a.date), db = parseDate(b.date);
-    return (da && db) ? da - db : 0;
-  });
-  const viewSorted = applyLast8Limit(filterByActiveDateRange(sorted));
+  // Capture one state snapshot so exported rows and filename cannot drift mid-click.
+  const selection = selectAnalyticsRecords();
+  const viewSorted = selection.records;
 
   // Flat format: one row per stage (match-level fields repeated).
   // In classifiersOnly mode, only classifier stages are included.
@@ -416,6 +427,11 @@ function exportChartCSV() {
         adj?.method || '',
       ]);
     }
+  }
+
+  if (rows.length === 1) {
+    setStatus(describeEmptyChartCSVExport(selection), 'error');
+    return;
   }
 
   const csv      = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');

@@ -7,6 +7,7 @@ All notable user-facing changes are documented here. Update this file before pub
 ### Fixed
 
 - Match, non-classifier stage, and Adjusted % displays and PNG cards now remain neutral instead of inferring USPSA classes. Captured GM hit factors appear separately as an explicit benchmark comparison.
+- Chart CSV export now shares the final chart dataset and explains empty filtered results instead of downloading a header-only file.
 
 ## v1.6.7 — 2026-08-27
 

@@ -72,6 +72,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Treat Last 8 as a post-fetch view preference. Toggling it makes no request and never mutates fetched results, Match History, `matchCache`, or `lastMatchList`.
 - When fewer than eight matches qualify, use all available matches. State the visible and qualifying counts near the switch.
 - Keep the controls wrapping at narrow widths without page-level overflow.
+- Chart CSV uses the same final analytics selection as rendering. When no data rows qualify, create no download and announce a concise status explanation for the current division/date, Scored/All view, unchecked-match, or Classifiers Only exclusion.
 
 ## Manual match type
 
