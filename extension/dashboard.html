@@ -1296,8 +1296,8 @@
 </header>
 
 <div class="controls">
-  <select id="divisionFilter" aria-label="Filter progress by division" title="Filter progress by division">
-    <option value="">All Divisions</option>
+  <select id="divisionFilter" aria-label="Choose USPSA division" title="Choose USPSA division">
+    <option value="" disabled selected>Division</option>
     <option value="co">Carry Optics</option>
     <option value="lo">Limited Optics</option>
     <option value="opn">Open</option>
@@ -1320,8 +1320,6 @@
       <option value="3m">3 mo</option>
       <option value="6m" selected>6 mo</option>
       <option value="1y">1 yr</option>
-      <option value="3y">3 yr</option>
-      <option value="all">all time</option>
     </select>
   </label>
   <button id="fetchBtn"  class="ctrl-btn">Fetch Scores</button>
@@ -1437,8 +1435,6 @@
   <button class="time-btn" type="button" data-date-preset="3m" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">3 mo</button>
   <button class="time-btn active" type="button" data-date-preset="6m" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="true">6 mo</button>
   <button class="time-btn" type="button" data-date-preset="1y" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">1 yr</button>
-  <button class="time-btn" type="button" data-date-preset="3y" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">3 yr</button>
-  <button class="time-btn" type="button" data-date-preset="all" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">all time</button>
   <label id="last8ToggleWrap" class="last8-toggle">
     <span class="toggle-lbl">Last 8 matches</span>
     <span class="toggle-switch">

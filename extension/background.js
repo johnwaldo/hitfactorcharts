@@ -66,8 +66,6 @@ const FETCH_TIMELINES = Object.freeze({
   '3m':  { label: '3 mo',         months: 3 },
   '6m':  { label: '6 mo',         months: 6 },
   '1y':  { label: '1 yr',         months: 12 },
-  '3y':  { label: '3 yr',         months: 36 },
-  'all': { label: 'all time',     months: null },
 });
 
 function localDateOnly(date = new Date()) {
@@ -132,7 +130,7 @@ function normalizeFetchCoverage(value, today = localDateOnly()) {
 
 function mergeFetchCoverage(existing, scope) {
   const coverage = normalizeFetchCoverage(existing);
-  if (coverage?.allTime || scope.value === 'all') return { allTime: true, intervals: [] };
+  if (coverage?.allTime) return { allTime: true, intervals: [] };
   return normalizeFetchCoverage({
     allTime: false,
     intervals: [...(coverage?.intervals || []), { start: scope.start, end: scope.end }],
@@ -141,13 +139,14 @@ function mergeFetchCoverage(existing, scope) {
 
 function resolveFetchTimeline(requested, referenceDate = new Date()) {
   const requestedValue = typeof requested === 'object' ? requested?.value : requested;
-  const value = Object.hasOwn(FETCH_TIMELINES, requestedValue) ? requestedValue : '6m';
+  const hasSupportedValue = Object.hasOwn(FETCH_TIMELINES, requestedValue);
+  const value = hasSupportedValue ? requestedValue : '6m';
   const preset = FETCH_TIMELINES[value];
   const suppliedStart = normalizeDateOnly(requested?.start);
   const suppliedEnd = normalizeDateOnly(requested?.end);
-  const hasSuppliedBounds = value !== 'all' && suppliedStart && suppliedEnd && suppliedStart <= suppliedEnd;
-  const end = preset.months == null ? null : (hasSuppliedBounds ? suppliedEnd : localDateOnly(referenceDate));
-  const start = end == null ? null : (hasSuppliedBounds ? suppliedStart : subtractCalendarMonths(end, preset.months));
+  const hasSuppliedBounds = hasSupportedValue && suppliedStart && suppliedEnd && suppliedStart <= suppliedEnd;
+  const end = hasSuppliedBounds ? suppliedEnd : localDateOnly(referenceDate);
+  const start = hasSuppliedBounds ? suppliedStart : subtractCalendarMonths(end, preset.months);
   return { value, label: preset.label, start, end };
 }
 
@@ -155,11 +154,6 @@ function filterMatchListByTimeline(matchList, scope) {
   let invalidDateCount = 0;
   let futureDateCount = 0;
   let beforeCutoffCount = 0;
-
-  if (scope.value === 'all') {
-    invalidDateCount = matchList.filter(match => normalizeDateOnly(match.date) == null).length;
-    return { matches: [...matchList], invalidDateCount, futureDateCount, beforeCutoffCount };
-  }
 
   const matches = matchList.filter(match => {
     const date = normalizeDateOnly(match.date);
