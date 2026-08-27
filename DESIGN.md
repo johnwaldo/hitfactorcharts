@@ -49,10 +49,10 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Preserve older cache and Match History entries when a narrower timeline is fetched. Explicit single-match refresh remains unrestricted.
 - Keep the label and select together as controls wrap at narrow widths, with visible focus and no page-level horizontal overflow.
 
-## Master Calendar
+## Last 8 analytics
 
-- Show exactly six chronological calendar-month blocks: the current month and the previous five months. Keep this window independent from the graph date preset.
-- Use three columns on wide screens, two on medium screens, and one at widths up to 640px. Day cells and match entries must remain inside their month block without page-level overflow.
-- Display the match name plus division and score when space allows. Preserve the full date, identity, division, and score in each entry's accessible name.
-- Calendar entries are native buttons that move keyboard focus to the corresponding Match History row. The destination receives a short, restrained highlight.
-- Empty months retain their complete calendar grid. If the whole window is empty, state that clearly without hiding the month blocks.
+- Place a labelled native-checkbox switch beside the analytics date presets. Default it off, persist only a valid boolean, and expose visible keyboard focus and active styling in both themes.
+- Apply Last 8 after the active date range, division, Scored/All view, and manual match selection. Use one shared final-eight dataset for summaries, charts, classifier analysis, and chart CSV export.
+- Treat Last 8 as a post-fetch view preference. Toggling it makes no request and never mutates fetched results, Match History, `matchCache`, or `lastMatchList`.
+- When fewer than eight matches qualify, use all available matches. State the visible and qualifying counts near the switch.
+- Keep the controls wrapping at narrow widths without page-level overflow.
