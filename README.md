@@ -131,7 +131,7 @@ Analytics open on the most recent **6 mo** so trends stay readable. Use the butt
 
 The **Last 8 matches** switch applies after the active analytics date range, division, Scored/All view, and manually selected matches. Turn it on to use the most recent eight qualifying matches across every chart, summary, classifier analysis, and chart CSV export. If fewer than eight qualify, all available matches are used. The preference is remembered, while Match History and cached records remain complete.
 
-The **Fetch timeline** dropdown beside **Fetch Scores** is separate: it limits network requests before a fetch begins and remembers your last choice. A narrower fetch merges new results with older cached Match History instead of deleting it. Choose a broader timeline to retrieve older uncached matches; changing the dropdown or Last 8 switch alone does not make a request. **all time** keeps the original unrestricted fetch behavior, and refreshing one match remains unrestricted.
+The **Fetch timeline** dropdown beside **Fetch Scores** is separate: it limits network requests before a fetch begins and remembers your last choice. A narrower fetch merges new results with older cached Match History instead of deleting it. When you later choose a broader timeline, matches already cached for the same member are reused and only missing matches receive score and stage requests; the progress log reports both counts. Changing the dropdown or Last 8 switch alone does not make a request. **all time** expands discovery without discarding reusable cached matches, and refreshing one match remains unrestricted.
 
 ### Exporting data
 

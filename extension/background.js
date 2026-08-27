@@ -261,6 +261,12 @@ function buildResult(match, score, memberNumber) {
   };
 }
 
+function isReusableMatchCache(cached, memberNumber) {
+  if (!cached || typeof cached !== 'object') return false;
+  const expectedOwner = (memberNumber || '').toUpperCase() || null;
+  return cached.cached_for === expectedOwner;
+}
+
 // ── results/new/{matchId} scraper — injected into tab ─────────────────────────
 // Reads the dynamically-rendered table in #mainResultsDiv plus the dropdown
 // options for #resultLevel and #divisionLevel.
@@ -985,7 +991,6 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
       push(`Skipping ${skipped} non-USPSA match(es): ${names}`);
     }
 
-    push(`Fetching scores for ${uspsaMatches.length} in-range USPSA match(es)…`);
     const results = [];
 
     // Include non-USPSA matches in results (without scores) for history display
@@ -993,17 +998,26 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
       results.push(buildResult(m, {}, memberNumber));
     }
 
-    for (let i = 0; i < uspsaMatches.length; i++) {
-      const match = uspsaMatches[i];
-      push(`  → [${i + 1}/${uspsaMatches.length}] ${match.match_name} (${match.date})`);
-
+    const cachedMatches = [];
+    const uncachedMatches = [];
+    for (const match of uspsaMatches) {
       const cached = cache[match.match_id];
-      // Only use cache if it was fetched for the same member number
-      if (cached && cached.cached_for === (memberNumber || '').toUpperCase()) {
-        push('     (cached)');
-        results.push({ ...match, ...cached, _cached: true });
-        continue;
-      }
+      if (isReusableMatchCache(cached, memberNumber)) cachedMatches.push(match);
+      else uncachedMatches.push(match);
+    }
+
+    for (const match of cachedMatches) {
+      results.push({ ...match, ...cache[match.match_id], _cached: true });
+    }
+    if (cachedMatches.length > 0) {
+      push(`Reusing ${cachedMatches.length} cached in-range match(es).`);
+    }
+
+    push(`Fetching scores for ${uncachedMatches.length} uncached in-range USPSA match(es)…`);
+
+    for (let i = 0; i < uncachedMatches.length; i++) {
+      const match = uncachedMatches[i];
+      push(`  → [${i + 1}/${uncachedMatches.length}] ${match.match_name} (${match.date})`);
 
       const score  = await fetchMatchScore(tabId, match.match_id, memberNumber, name, push);
 
@@ -1031,12 +1045,13 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
     await chrome.storage.local.set({ lastMatchList: mergedMatchList });
 
     const n = results.filter(r => r.overall_pct != null).length;
-    push(`Done — ${n}/${uspsaMatches.length} matches with scores.`);
+    const newlyScoredCount = results.filter(r => r._cached === false && r.overall_pct != null).length;
+    push(`Done — ${n}/${uspsaMatches.length} matches with scores; ${cachedMatches.length} reused, ${uncachedMatches.length} requested.`);
 
-    // Fetch USPSA classification only if at least one scored match was found
+    // Refresh USPSA classification only when this run fetched at least one new score.
     let classificationData = null;
     let _not_logged_in_uspsa = false;
-    if (memberNumber && n > 0) {
+    if (memberNumber && newlyScoredCount > 0) {
       const clfResult = await fetchUSPSAClassification(memberNumber, push);
       if (clfResult?._not_logged_in) {
         _not_logged_in_uspsa = true;
@@ -1050,7 +1065,7 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
     const combinedResults = mergedMatchList.map(match => {
       if (fetchedById.has(match.match_id)) return fetchedById.get(match.match_id);
       const cached = cache[match.match_id];
-      if (cached && cached.cached_for === (memberNumber || '').toUpperCase()) {
+      if (isReusableMatchCache(cached, memberNumber)) {
         return { ...match, ...cached, _cached: true };
       }
       return buildResult(match, {}, memberNumber);
