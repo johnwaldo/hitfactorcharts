@@ -1660,6 +1660,29 @@ function _trendLabel(delta, threshold = 1.0) {
     `<span class="s-note">(within ±${threshold.toFixed(1)} ${unit} of baseline)</span>`;
 }
 
+function dominantEliteReference(pairs) {
+  const knownReferences = pairs
+    .flatMap(pair => pair.references || [])
+    .map(reference => ({
+      refClass: String(reference.refClass || '').trim().toUpperCase(),
+      refDiv: String(reference.refDiv || '').trim(),
+    }))
+    .filter(reference => /^[A-Z]{1,2}$/.test(reference.refClass) && reference.refDiv);
+  if (!knownReferences.length) return null;
+
+  const counts = new Map();
+  for (const reference of knownReferences) {
+    const key = `${reference.refClass}\u0000${reference.refDiv}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const [topKey, topCount] = ranked[0];
+  if (ranked[1]?.[1] === topCount || topCount <= knownReferences.length / 2) return null;
+
+  const [refClass, refDiv] = topKey.split('\u0000');
+  return ['GM', 'M'].includes(refClass) ? { refClass, refDiv } : null;
+}
+
 function generateSummaries(viewSorted) {
   const sorted = [...viewSorted].sort((a, b) => {
     const da = parseDate(a.date), db = parseDate(b.date);
@@ -1697,17 +1720,24 @@ function generateSummaries(viewSorted) {
       if (!adjs.length) continue;
       const rawPct = effectiveDivPct(r) ?? effectiveOverallPct(r);
       if (rawPct == null) continue;
-      pairs.push({ adj: _avg(adjs.map(a => a.adjPct)), raw: rawPct });
+      pairs.push({
+        adj: _avg(adjs.map(a => a.adjPct)),
+        raw: rawPct,
+        references: adjs.map(({ refClass, refDiv }) => ({ refClass, refDiv })),
+      });
     }
     if (pairs.length >= 3) {
       const meanAdj = _avg(pairs.map(p => p.adj));
       const meanRaw = _avg(pairs.map(p => p.raw));
       const diff    = meanAdj - meanRaw;
       const sign    = diff >= 0 ? '+' : '';
+      const eliteReference = dominantEliteReference(pairs);
       const context = diff > 1.5
         ? `You're regularly competing against stronger fields than your division draw alone suggests.`
         : diff < -1.5
         ? `Your division tends to draw competitive shooters relative to the overall match field.`
+        : eliteReference
+        ? `Your raw division % was already measured against predominantly ${escHtml(eliteReference.refClass)}-class competition in ${escHtml(divisionLabel(eliteReference.refDiv))}, so little field-strength adjustment was needed.`
         : `Your division's field strength closely mirrors the overall match field.`;
       adjEl.innerHTML =
         `Adjusted avg <span class="s-val">${meanAdj.toFixed(1)}%</span> ` +
