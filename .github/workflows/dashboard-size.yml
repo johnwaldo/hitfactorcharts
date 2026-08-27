@@ -1,0 +1,28 @@
+name: Dashboard size guard
+
+on:
+  pull_request:
+    paths:
+      - 'extension/dashboard.js'
+      - '.github/workflows/dashboard-size.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-size:
+    name: Enforce dashboard.js line limit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check dashboard.js line count
+        run: |
+          line_count=$(wc -l < extension/dashboard.js)
+          limit=2000
+          printf 'extension/dashboard.js has %s lines; limit is %s lines.\n' "$line_count" "$limit"
+
+          if [ "$line_count" -ge "$limit" ]; then
+            echo "::error file=extension/dashboard.js::dashboard.js has ${line_count} lines and must stay below ${limit}. Extract a cohesive module before merging."
+            exit 1
+          fi
