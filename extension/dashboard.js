@@ -643,6 +643,16 @@ function getMetricStages(match) {
   return match.stages.filter((stage, index) => isStageIncluded(match, stage, index));
 }
 
+function stageReportsHit(stage, key) {
+  return stage?.hit_columns?.[key] === true;
+}
+
+function reportedStageHit(stage, key) {
+  if (!stageReportsHit(stage, key)) return null;
+  const value = Number(stage[key]);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
 function excludedStageCount(match) {
   if (!match?.stages?.length) return 0;
   return match.stages.length - getMetricStages(match).length;
@@ -1307,7 +1317,10 @@ function renderAll() {
           match_name: r.match_name,
           division: divisionLabel(r.division),
           code: clf.number,
-          a: s.a, c: s.c, d: s.d, m: s.m, ns: s.ns, p: s.p,
+          a: reportedStageHit(s, 'a'), b: reportedStageHit(s, 'b'),
+          c: reportedStageHit(s, 'c'), d: reportedStageHit(s, 'd'),
+          m: reportedStageHit(s, 'm'), ns: reportedStageHit(s, 'ns'),
+          m_ns: reportedStageHit(s, 'm_ns'), p: reportedStageHit(s, 'p'),
         });
       }
     }
@@ -1370,7 +1383,8 @@ function renderAll() {
       points: clfPoints
         .filter(p => p.division === div)
         .map(p => ({ date: p.date, y: p.y, label: p.label, match_name: p.match_name, hf: p.hf,
-                     isOfficial: p.isOfficial, a: p.a, c: p.c, d: p.d, m: p.m, ns: p.ns, p_: p.p })),
+                     isOfficial: p.isOfficial, a: p.a, b: p.b, c: p.c, d: p.d,
+                     m: p.m, ns: p.ns, m_ns: p.m_ns, p_: p.p })),
     }));
 
     const allClfDates = [...new Set(clfPoints.map(p => p.date))].sort();
@@ -1628,21 +1642,29 @@ function renderAll() {
   const accuracyPoints  = [];
   for (const r of viewSorted) {
     if (!r.stages?.length) continue;
-    let totalM = 0, totalNS = 0, stagesWithHits = 0;
+    let totalM = 0, totalNS = 0, totalCombined = 0, stagesWithHits = 0;
     for (const s of getMetricStages(r)) {
-      if (s.m == null && s.ns == null) continue;
-      totalM  += s.m  || 0;
-      totalNS += s.ns || 0;
+      const stageM = reportedStageHit(s, 'm');
+      const stageNS = reportedStageHit(s, 'ns');
+      if (stageM != null || stageNS != null) {
+        totalM += stageM || 0;
+        totalNS += stageNS || 0;
+      } else {
+        const stageCombined = reportedStageHit(s, 'm_ns');
+        if (stageCombined == null) continue;
+        totalCombined += stageCombined;
+      }
       stagesWithHits++;
     }
     if (!stagesWithHits) continue;
     accuracyPoints.push({
       date: r.date,
-      y: totalM + totalNS,
+      y: totalM + totalNS + totalCombined,
       label: r.match_name,
       division: r.division,
       m: totalM,
       ns: totalNS,
+      m_ns: totalCombined,
     });
   }
   accuracyPoints.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -1660,34 +1682,49 @@ function renderAll() {
   }
 
   // ── Hit zone breakdown ────────────────────────────────────────────────────
-  // Stacked bar chart: A / C / D / M+NS per match as % of total hits.
-  // Shows whether the shooter is cleaning up hit zones over time.
+  // Stacked bar chart of reported hit-zone outcomes per match. Raw values stay
+  // unchanged; the renderer transforms cumulative boundaries for readability.
   const hitZoneSection = document.getElementById('chartHitZoneSection');
   const hitZoneBars    = [];
   for (const r of viewSorted) {
     if (!r.stages?.length) continue;
-    let a = 0, c = 0, d = 0, m = 0, ns = 0;
-    let hasHits = false;
+    const totals = { a: 0, b: 0, c: 0, d: 0, m: 0, ns: 0, m_ns: 0, p: 0 };
+    const available = { a: false, b: false, c: false, d: false, m: false, ns: false, m_ns: false, p: false };
     for (const s of getMetricStages(r)) {
-      if (s.a == null && s.c == null) continue;
-      a  += s.a  || 0;
-      c  += s.c  || 0;
-      d  += s.d  || 0;
-      m  += s.m  || 0;
-      ns += s.ns || 0;
-      hasHits = true;
+      for (const key of ['a', 'b', 'c', 'd', 'p']) {
+        const value = reportedStageHit(s, key);
+        if (value == null) continue;
+        available[key] = true;
+        totals[key] += value;
+      }
+
+      const stageM = reportedStageHit(s, 'm');
+      const stageNS = reportedStageHit(s, 'ns');
+      if (stageM != null || stageNS != null) {
+        if (stageM != null) { available.m = true; totals.m += stageM; }
+        if (stageNS != null) { available.ns = true; totals.ns += stageNS; }
+      } else {
+        const stageCombined = reportedStageHit(s, 'm_ns');
+        if (stageCombined != null) {
+          available.m_ns = true;
+          totals.m_ns += stageCombined;
+        }
+      }
     }
-    if (!hasHits) continue;
-    const total = a + c + d + m + ns;
+
+    const zoneKeys = ['a', 'b', 'c', 'd', 'm', 'ns', 'm_ns'];
+    if (!zoneKeys.some(key => available[key])) continue;
+    const total = zoneKeys.reduce((sum, key) => sum + totals[key], 0);
     if (!total) continue;
+    const values = Object.fromEntries(zoneKeys.map(key => [key, available[key] ? totals[key] : null]));
+    const percentages = Object.fromEntries(zoneKeys.map(key => [key + 'Pct', available[key] ? (totals[key] / total) * 100 : null]));
     hitZoneBars.push({
       date: r.date,
       label: r.match_name,
-      a, c, d, bad: m + ns, total,
-      aPct:   (a / total) * 100,
-      cPct:   (c / total) * 100,
-      dPct:   (d / total) * 100,
-      badPct: ((m + ns) / total) * 100,
+      ...values,
+      ...percentages,
+      total,
+      procedurals: available.p ? totals.p : null,
     });
   }
   hitZoneBars.sort((a, b) => (a.date || '').localeCompare(b.date || ''));

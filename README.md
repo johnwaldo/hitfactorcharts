@@ -127,6 +127,10 @@ Summaries appear automatically once enough data is loaded. Classifier trend requ
 
 The **Non-Classifier Stage Trend** averages your included non-classifier stage percentages for each match. Each percentage compares your hit factor with the top shooter on that stage at that match. It uses a linear 0–100% scale and is useful for tracking match-relative performance, but it is not an official USPSA classification percentage and does not use GM/M/A/B/C/D bands. Its 40%, 60%, 75%, 85%, and 95% lines are numeric percentage references only.
 
+The **Hit Zone Breakdown** uses the reported A/B/C/D/M/NS columns for included stages. B appears only when a positive B count is reported. Separate M and NS source columns remain separate; a combined source column is labelled **M+NS** and is never split. Older cached stages without column-availability metadata show blanks until that match is refreshed, so an unavailable field is not presented as an authoritative zero.
+
+Hit-zone percentages use the **reported hit-zone total** as their denominator. Procedural penalties are disclosed but excluded. Raw counts and percentages remain unchanged in tooltips and exports; only the chart geometry is nonlinear. Cumulative raw boundaries from 0–50% occupy 0–30% of visual height, and boundaries from 50–100% occupy 30–100%, making smaller outcomes easier to distinguish while preserving order and the 100% endpoint.
+
 ### Filtering by date
 
 Analytics open on the most recent **6 mo** so trends stay readable. Use the buttons above the charts to switch to **Last 1 month**, **3 mo**, **6 mo**, **1 yr**, **3 yr**, or **all time**. The active range applies to every chart, summary statistic, classifier-only view, and chart CSV export without re-fetching or deleting older Match History records.
@@ -137,9 +141,9 @@ The **Fetch timeline** dropdown beside **Fetch Scores** is separate: it limits n
 
 ### Exporting data
 
-**As image:** Click the floppy-disk icon on any match row to open the export menu. Choose **Full Match** for a match summary card or any individual stage for a per-stage card. Both download as PNG at 2× resolution.
+**As image:** Click the floppy-disk icon on any match row to open the export menu. Choose **Full Match** for a match summary card or any individual stage for a per-stage card. Both download as PNG at 2× resolution. Stage cards preserve separate M/NS or an explicitly combined M+NS value and omit unavailable hit columns.
 
-**As CSV:** Click **⤓ CSV** in the chart section header to download all currently visible match data as a spreadsheet. One row per stage, includes match name, division, class, overall %, div %, placement, stage HF, time, hit counts (A/C/D/M/NS/P), classifier number, and official USPSA %.
+**As CSV:** Click **⤓ CSV** in the chart section header to download all currently visible match data as a spreadsheet. One row per stage, includes match name, division, class, overall %, div %, placement, stage HF, time, reported hit counts (A/B/C/D/M/NS/M+NS/P), classifier number, and official USPSA %. Unavailable source columns remain blank; reported zeroes remain zero.
 
 ### Filtering matches
 

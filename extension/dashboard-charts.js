@@ -437,13 +437,15 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
             ? `<div class="tt-meta">${escHtml(h.match_name)}</div>` : '';
           const hfLine = (h.hf != null && !h.stages?.length)
             ? `<div class="tt-meta">HF ${h.hf.toFixed(4)}</div>` : '';
-          const hitsLine = (!h.stages?.length && (h.a || h.c || h.d || h.m || h.ns || h.p_))
+          const hitsLine = (!h.stages?.length && (h.a || h.b || h.c || h.d || h.m || h.ns || h.m_ns || h.p_))
             ? `<div class="tt-meta">${[
                 h.a  ? `<span style="color:#4caf50">${h.a}A</span>`                    : '',
+                h.b  ? `<span style="color:#3b82f6">${h.b}B</span>`                    : '',
                 h.c  ? `<span style="color:#fdd835">${h.c}C</span>`                    : '',
                 h.d  ? `<span style="color:#ff9800">${h.d}D</span>`                    : '',
                 h.m  ? `<span style="color:#f44336;font-weight:600">${h.m}M</span>`   : '',
-                h.ns ? `<span style="color:#f44336;font-weight:600">${h.ns}NS</span>` : '',
+                h.ns ? `<span style="color:#d946ef;font-weight:600">${h.ns}NS</span>` : '',
+                h.m_ns ? `<span style="color:#8b5cf6;font-weight:600">${h.m_ns} M+NS</span>` : '',
                 h.p_ ? `<span style="color:#f44336">${h.p_}P</span>`                  : '',
               ].filter(Boolean).join(' ')}</div>` : '';
           const stagesHtml = (h.stages && h.stages.length > 0)
@@ -454,7 +456,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
                 <div class="tt-stage-row">
                   <span class="tt-stage-name">${clfBadge}${escHtml(s.name)}</span>
                   <span class="tt-stage-hf">${s.hf != null ? s.hf.toFixed(4) : '—'}</span>
-                  <span class="tt-stage-hits">${s.a ? '<span style="color:#4caf50">' + s.a + 'A</span> ' : ''}${s.c ? '<span style="color:#fdd835">' + s.c + 'C</span> ' : ''}${s.d ? '<span style="color:#ff9800">' + s.d + 'D</span>' : ''}${s.m ? ' <span style="color:#f44336;font-weight:600">' + s.m + 'M</span>' : ''}${s.ns ? ' <span style="color:#f44336;font-weight:600">' + s.ns + 'NS</span>' : ''}${s.p ? ' <span style="color:#f44336">' + s.p + 'P</span>' : ''}</span>
+                  <span class="tt-stage-hits">${reportedStageHit(s, 'a') ? '<span style="color:#4caf50">' + reportedStageHit(s, 'a') + 'A</span> ' : ''}${reportedStageHit(s, 'b') ? '<span style="color:#3b82f6">' + reportedStageHit(s, 'b') + 'B</span> ' : ''}${reportedStageHit(s, 'c') ? '<span style="color:#fdd835">' + reportedStageHit(s, 'c') + 'C</span> ' : ''}${reportedStageHit(s, 'd') ? '<span style="color:#ff9800">' + reportedStageHit(s, 'd') + 'D</span>' : ''}${reportedStageHit(s, 'm') ? ' <span style="color:#f44336;font-weight:600">' + reportedStageHit(s, 'm') + 'M</span>' : ''}${reportedStageHit(s, 'ns') ? ' <span style="color:#d946ef;font-weight:600">' + reportedStageHit(s, 'ns') + 'NS</span>' : ''}${reportedStageHit(s, 'm_ns') ? ' <span style="color:#8b5cf6;font-weight:600">' + reportedStageHit(s, 'm_ns') + ' M+NS</span>' : ''}${reportedStageHit(s, 'p') ? ' <span style="color:#f44336">' + reportedStageHit(s, 'p') + 'P</span>' : ''}</span>
                 </div>`;
               }).join('')}</div>` : '';
           tooltipEl.innerHTML = `
@@ -622,23 +624,34 @@ function drawMessage(canvas, msg) {
 }
 
 // ── Stacked bar chart — hit zone breakdown ────────────────────────────────────
-// bars: [{ date, label, aPct, cPct, dPct, badPct, a, c, d, bad, total }]
-// Segments: A (green) / C (yellow) / D (orange) / M+NS (red)
+// Raw shares are stored on each bar. Only cumulative display boundaries are
+// transformed: 0–50% raw maps to 0–30% visual; 50–100% maps to 30–100%.
+function hitZoneVisualPct(rawPct) {
+  const bounded = Math.max(0, Math.min(100, rawPct));
+  return bounded <= 50 ? bounded * 0.6 : 30 + (bounded - 50) * 1.4;
+}
+
 function drawStackedBarChart(canvas, bars) {
   if (!bars.length) { drawMessage(canvas, 'No data.'); return; }
 
   const ctx  = prepareChartContext(canvas);
   const area = chartArea(canvas);
+  area.h -= 18;
   clearCanvas(ctx, canvas);
 
   const COLORS = {
-    a:   '#4caf50',
-    c:   '#fdd835',
-    d:   '#ff9800',
-    bad: '#f44336',
+    a:    '#2eaf65',
+    b:    '#3b82f6',
+    c:    '#d4a900',
+    d:    '#f97316',
+    m:    '#ef4444',
+    ns:   '#d946ef',
+    m_ns: '#8b5cf6',
   };
-  const SEGMENTS = ['a', 'c', 'd', 'bad'];
-  const SEG_LABELS = { a: 'A', c: 'C', d: 'D', bad: 'M+NS' };
+  const SEG_LABELS = { a: 'A', b: 'B', c: 'C', d: 'D', m: 'M', ns: 'NS', m_ns: 'M+NS' };
+  const SEGMENTS = ['a', 'b', 'c', 'd', 'm', 'ns', 'm_ns'].filter(seg =>
+    seg === 'b' ? bars.some(bar => bar.b > 0) : bars.some(bar => bar[seg] != null)
+  );
 
   const n       = bars.length;
   const barW    = Math.max(4, Math.min(40, (area.w / n) * 0.7));
@@ -647,16 +660,18 @@ function drawStackedBarChart(canvas, bars) {
 
   bars.forEach((bar, i) => {
     const cx = area.x0 + gap * i + gap / 2;
-    let yBottom = area.y0 + area.h;
+    let cumulativeRaw = 0;
 
     SEGMENTS.forEach(seg => {
       const pct = bar[seg + 'Pct'];
       if (!pct) return;
-      const segH = (pct / 100) * area.h;
-      const yTop = yBottom - segH;
+      const lowerVisual = hitZoneVisualPct(cumulativeRaw);
+      cumulativeRaw += pct;
+      const upperVisual = hitZoneVisualPct(cumulativeRaw);
+      const yBottom = area.y0 + area.h - (lowerVisual / 100) * area.h;
+      const yTop = area.y0 + area.h - (upperVisual / 100) * area.h;
       ctx.fillStyle = COLORS[seg];
-      ctx.fillRect(cx - barW / 2, yTop, barW, segH);
-      yBottom = yTop;
+      ctx.fillRect(cx - barW / 2, yTop, barW, yBottom - yTop);
     });
 
     hitMap.push({ cx, cy: area.y0 + area.h / 2, bar });
@@ -675,7 +690,7 @@ function drawStackedBarChart(canvas, bars) {
   // Y axis — 0/25/50/75/100%
   ctx.strokeStyle = GRID_COLOR(); ctx.lineWidth = 1;
   [0, 25, 50, 75, 100].forEach(v => {
-    const cy = area.y0 + area.h - (v / 100) * area.h;
+    const cy = area.y0 + area.h - (hitZoneVisualPct(v) / 100) * area.h;
     ctx.beginPath(); ctx.moveTo(area.x0, cy); ctx.lineTo(area.x0 + area.w, cy); ctx.stroke();
     ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'right';
     ctx.fillText(v + '%', area.x0 - 5, cy + 3);
@@ -691,19 +706,27 @@ function drawStackedBarChart(canvas, bars) {
 
   // Legend
   let lx = area.x0 + 8;
-  const ly = area.y0 + area.h + 30;
+  let ly = area.y0 + area.h + 30;
   SEGMENTS.forEach(seg => {
+    const itemWidth = 14 + ctx.measureText(SEG_LABELS[seg]).width + 14;
+    if (lx + itemWidth > area.x0 + area.w && lx > area.x0 + 8) {
+      lx = area.x0 + 8;
+      ly += 14;
+    }
     ctx.fillStyle = COLORS[seg];
     ctx.fillRect(lx, ly - 7, 10, 8);
     ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'left';
     ctx.fillText(SEG_LABELS[seg], lx + 14, ly);
-    lx += 14 + ctx.measureText(SEG_LABELS[seg]).width + 14;
+    lx += itemWidth;
   });
 
   // Tooltip
   canvas._hitMap    = hitMap;
   canvas._valueUnit = 'hitzones';
   canvas._barHitTolerance = gap / 2;
+  canvas._hitZoneSegments = SEGMENTS;
+  canvas._hitZoneColors = COLORS;
+  canvas._hitZoneLabels = SEG_LABELS;
   if (!canvas._tooltipBound) {
     canvas._tooltipBound = true;
     canvas.addEventListener('mousemove', e => {
@@ -711,18 +734,23 @@ function drawStackedBarChart(canvas, bars) {
       const h = (canvas._hitMap || []).find(hit => Math.abs(hit.cx - mx) < canvas._barHitTolerance);
       if (h) {
         const b = h.bar;
+        const hitRows = (canvas._hitZoneSegments || []).map(seg => {
+          if (b[seg] == null) return '';
+          const color = canvas._hitZoneColors[seg];
+          const label = canvas._hitZoneLabels[seg];
+          return `<span style="color:${color};font-weight:${seg === 'a' ? '400' : '600'}">${b[seg]} ${label} (${b[seg + 'Pct'].toFixed(2)}%)</span>`;
+        }).filter(Boolean).join(' &nbsp; ');
+        const proceduralLine = b.procedurals == null
+          ? 'Procedural-penalty column unavailable'
+          : `${b.procedurals} procedural ${b.procedurals === 1 ? 'penalty' : 'penalties'} excluded from denominator`;
         tooltipEl.innerHTML = `
           <div class="tt-name">${escHtml(b.label)}</div>
           <div class="tt-date">${escHtml(b.date || '')}</div>
-          <div class="tt-meta" style="margin-top:4px">
-            <span style="color:#4caf50">${b.a}A (${b.aPct.toFixed(0)}%)</span> &nbsp;
-            <span style="color:#fdd835">${b.c}C (${b.cPct.toFixed(0)}%)</span> &nbsp;
-            <span style="color:#ff9800">${b.d}D (${b.dPct.toFixed(0)}%)</span> &nbsp;
-            <span style="color:#f44336;font-weight:600">${b.bad} M+NS (${b.badPct.toFixed(0)}%)</span>
-          </div>
-          <div class="tt-meta" style="color:#666">${b.total} total hits</div>
+          <div class="tt-meta" style="margin-top:4px">${hitRows}</div>
+          <div class="tt-meta" style="color:#aab3c2">${b.total} reported hit-zone total</div>
+          <div class="tt-meta" style="color:#666">${proceduralLine}</div>
         `;
-        const tw = 280, th = 110;
+        const tw = 320, th = 140;
         const tx = e.clientX + 14 + tw > window.innerWidth  ? e.clientX - tw - 8 : e.clientX + 14;
         const ty = e.clientY - 10 + th > window.innerHeight ? e.clientY - th      : e.clientY - 10;
         tooltipEl.style.left    = tx + 'px';
