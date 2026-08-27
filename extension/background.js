@@ -173,6 +173,31 @@ function detectMatchType(name) {
   return 'Unknown';
 }
 
+const MANUAL_MATCH_TYPES = Object.freeze(['USPSA', 'IDPA', 'IPSC', 'Steel Challenge', '3-Gun', 'PCSL', 'ICORE']);
+const SOURCE_MATCH_TYPES = new Set([...MANUAL_MATCH_TYPES, 'Hit Factor', 'SCSA', 'Unknown']);
+
+function normalizeMatchTypeOverrides(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const normalized = {};
+  for (const [matchId, matchType] of Object.entries(value)) {
+    if (!matchId || ['__proto__', 'prototype', 'constructor'].includes(matchId)) continue;
+    if (MANUAL_MATCH_TYPES.includes(matchType)) normalized[matchId] = matchType;
+  }
+  return normalized;
+}
+
+function baseMatchType(match) {
+  const storedType = typeof match?.match_type === 'string' ? match.match_type.trim() : '';
+  if (SOURCE_MATCH_TYPES.has(storedType) && storedType !== 'Unknown') return storedType;
+  return detectMatchType(match?.match_name);
+}
+
+function effectiveMatchType(match, overrides) {
+  const detectedType = baseMatchType(match);
+  if (detectedType !== 'Unknown') return detectedType;
+  return overrides?.[match?.match_id] || detectedType;
+}
+
 // Types confirmed as non-USPSA — skip score fetching for these
 const NON_USPSA_TYPES = new Set(['IDPA', 'IPSC', 'Steel Challenge', '3-Gun', 'PCSL', 'ICORE', 'SCSA']);
 
@@ -937,22 +962,26 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
     if (filtered.futureDateCount) push(`Skipping ${filtered.futureDateCount} future-dated match(es).`);
     if (filtered.beforeCutoffCount) push(`Skipping ${filtered.beforeCutoffCount} match(es) before ${fetchScope.start}.`);
 
-    const stored = await chrome.storage.local.get(['lastMatchList', 'matchCache']);
+    const stored = await chrome.storage.local.get(['lastMatchList', 'matchCache', 'matchTypeOverrides']);
     const previousMatchList = stored.lastMatchList || [];
     const cache = stored.matchCache || {};
+    const matchTypeOverrides = normalizeMatchTypeOverrides(stored.matchTypeOverrides);
     const preserveMissingHistory = fetchScope.value !== 'all' || rawMatchList.length === 0;
     let mergedMatchList = mergeMatchLists(previousMatchList, matchList, { preserveMissing: preserveMissingHistory });
     await chrome.storage.local.set({ lastMatchList: mergedMatchList });
+    const mergedById = new Map(mergedMatchList.map(match => [match.match_id, match]));
+    const workMatches = matchList.map(match => mergedById.get(match.match_id) || match);
 
     if (rawMatchList.length === 0) {
       push('No matches extracted — preserving previously cached history.');
     }
 
     // Level 1: skip confirmed non-USPSA matches before fetching scores
-    const uspsaMatches = matchList.filter(m => isLikelyUSPSA(m.match_type));
-    const skipped = matchList.length - uspsaMatches.length;
+    const uspsaMatches = workMatches.filter(m => isLikelyUSPSA(effectiveMatchType(m, matchTypeOverrides)));
+    const skippedMatches = workMatches.filter(m => !isLikelyUSPSA(effectiveMatchType(m, matchTypeOverrides)));
+    const skipped = skippedMatches.length;
     if (skipped > 0) {
-      const names = matchList.filter(m => !isLikelyUSPSA(m.match_type)).map(m => `${m.match_name} (${m.match_type})`).join(', ');
+      const names = skippedMatches.map(m => `${m.match_name} (${effectiveMatchType(m, matchTypeOverrides)})`).join(', ');
       push(`Skipping ${skipped} non-USPSA match(es): ${names}`);
     }
 
@@ -960,7 +989,7 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
     const results = [];
 
     // Include non-USPSA matches in results (without scores) for history display
-    for (const m of matchList.filter(m => !isLikelyUSPSA(m.match_type))) {
+    for (const m of skippedMatches) {
       results.push(buildResult(m, {}, memberNumber));
     }
 
@@ -998,7 +1027,7 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
     }
 
     // Re-save the merged list with any match types confirmed from results pages.
-    mergedMatchList = mergeMatchLists(previousMatchList, matchList, { preserveMissing: preserveMissingHistory });
+    mergedMatchList = mergeMatchLists(previousMatchList, workMatches, { preserveMissing: preserveMissingHistory });
     await chrome.storage.local.set({ lastMatchList: mergedMatchList });
 
     const n = results.filter(r => r.overall_pct != null).length;

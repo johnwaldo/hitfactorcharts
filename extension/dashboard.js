@@ -228,6 +228,7 @@ let classifiersOnly  = false;   // when true, charts show only classifier stage 
 let adjustedOnly     = false;   // when true, Score Over Time shows only adjusted match points
 let selectedFetchTimeline = '6m'; // pre-fetch request scope; independent of analytics range
 let last8Matches = false;       // post-fetch analytics limit; never truncates cached history
+let matchTypeOverrides = {};    // match_id -> manual type for otherwise unconfirmed matches
 let lastFetchScope = null;
 
 const FETCH_TIMELINE_PRESETS = Object.freeze({
@@ -252,14 +253,55 @@ function resolveFetchTimeline(value, referenceDate = new Date()) {
 }
 
 const NON_USPSA_TYPES = new Set(['IDPA', 'IPSC', 'Steel Challenge', '3-Gun', 'PCSL', 'ICORE', 'SCSA']);
+const MANUAL_MATCH_TYPES = Object.freeze(['USPSA', 'IDPA', 'IPSC', 'Steel Challenge', '3-Gun', 'PCSL', 'ICORE']);
+const SOURCE_MATCH_TYPES = new Set([...MANUAL_MATCH_TYPES, 'Hit Factor', 'SCSA', 'Unknown']);
 // Confirmed USPSA types — only these count toward the USPSA match total in the status line.
-// 'Unknown' and 'Hit Factor' are unconfirmed and shown separately.
 const CONFIRMED_USPSA_TYPES = new Set(['USPSA', 'Hit Factor']);
+
+function detectMatchType(name) {
+  const normalized = String(name || '').toUpperCase();
+  if (/\bIDPA\b/.test(normalized)) return 'IDPA';
+  if (/\bIPSC\b/.test(normalized)) return 'IPSC';
+  if (/\bSTEEL[\s-]?CHALLENGE\b|\bSCSA\b/.test(normalized)) return 'Steel Challenge';
+  if (/\b3[\s-]?GUN\b/.test(normalized)) return '3-Gun';
+  if (/\bPCSL\b/.test(normalized)) return 'PCSL';
+  if (/\bICORE\b/.test(normalized)) return 'ICORE';
+  if (/\bUSPSA\b/.test(normalized)) return 'USPSA';
+  if (/\b(CARRY[\s-]?OPTICS|CARRYOPTICS|SINGLE[\s-]?STACK|SINGLESTACK|LIMITED[\s-]?OPTICS|LIMITEDOPTICS)\b/.test(normalized)) return 'USPSA';
+  return 'Unknown';
+}
+
+function normalizeMatchTypeOverrides(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const normalized = {};
+  for (const [matchId, matchType] of Object.entries(value)) {
+    if (!matchId || ['__proto__', 'prototype', 'constructor'].includes(matchId)) continue;
+    if (MANUAL_MATCH_TYPES.includes(matchType)) normalized[matchId] = matchType;
+  }
+  return normalized;
+}
+
+function baseMatchType(match) {
+  const storedType = typeof match?.match_type === 'string' ? match.match_type.trim() : '';
+  if (SOURCE_MATCH_TYPES.has(storedType) && storedType !== 'Unknown') return storedType;
+  return detectMatchType(match?.match_name);
+}
+
+function isUnconfirmedMatchType(match) {
+  return baseMatchType(match) === 'Unknown';
+}
+
+function effectiveMatchType(match) {
+  const detectedType = baseMatchType(match);
+  if (detectedType !== 'Unknown') return detectedType;
+  return matchTypeOverrides[match?.match_id] || detectedType;
+}
+
 function isLikelyUSPSA(matchType) { return !NON_USPSA_TYPES.has(matchType); }
 function isConfirmedUSPSA(matchType) { return CONFIRMED_USPSA_TYPES.has(matchType); }
 
 function isChartable(r) {
-  return isLikelyUSPSA(r.match_type || 'Unknown');
+  return isLikelyUSPSA(effectiveMatchType(r));
 }
 
 // ── Cross-division HHF normalization (field-strength adjustment) ──────────────
@@ -708,7 +750,7 @@ function hideOnboarding() {
 }
 
 // ── Restore persisted state on load ──────────────────────────────────────────
-chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision', 'fetchTimeline', 'last8Matches'], async d => {
+chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision', 'fetchTimeline', 'last8Matches', 'matchTypeOverrides'], async d => {
   // Try restoring from sync if local has no credentials (e.g. after reinstall)
   if (!d.memberNumber && !d.name) {
     await restoreFromSync();
@@ -727,6 +769,7 @@ chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache',
   selectedFetchTimeline = normalizeFetchTimeline(d.fetchTimeline);
   fetchTimelineSelect.value = selectedFetchTimeline;
   last8Matches = d.last8Matches === true;
+  matchTypeOverrides = normalizeMatchTypeOverrides(d.matchTypeOverrides);
   renderLast8Control();
 
   // Lock inputs if we already have saved credentials
@@ -1835,7 +1878,8 @@ function renderMatchList() {
 
   sorted.forEach(match => {
     const hasStages  = !!(match.stages && match.stages.length > 0);
-    const matchType  = match.match_type || 'Unknown';
+    const matchType  = effectiveMatchType(match);
+    const isUnconfirmed = isUnconfirmedMatchType(match);
     const isUSPSA    = isChartable(match);
     const isDeselected = deselectedMatches.has(match.match_id);
     const isExcluded = !isUSPSA || isDeselected;
@@ -1874,9 +1918,9 @@ function renderMatchList() {
     }
     if (!isUSPSA) metaParts.push('excluded from charts');
 
-    const typeBadgeClass = !isChartable(match)                    ? 'type-other'    // red  — non-USPSA/non-HF sport
-                         : match.found_by === 'member_number'    ? 'type-uspsa'    // green — confirmed by member #
-                         : 'type-unknown';                                          // orange — name-only or not found
+    const typeBadgeClass = !isLikelyUSPSA(matchType)              ? 'type-other'
+                         : isConfirmedUSPSA(matchType)            ? 'type-uspsa'
+                         : 'type-unknown';
 
     const item = document.createElement('div');
     item.className = 'match-item' + (isExcluded ? ' excluded' : '');
@@ -1906,6 +1950,44 @@ function renderMatchList() {
     row.querySelector('.match-name').textContent = match.match_name;
     row.querySelector('.match-meta').textContent = metaParts.join(' · ');
     row.querySelector('.match-type-badge').textContent = matchType;
+
+    if (isUnconfirmed) {
+      const typeControl = document.createElement('label');
+      typeControl.className = 'match-type-control';
+      const typeLabel = document.createElement('span');
+      typeLabel.textContent = 'Type';
+      const typeSelect = document.createElement('select');
+      typeSelect.className = 'match-type-select';
+      typeSelect.setAttribute('aria-label', `Classify ${match.match_name || 'unconfirmed match'}`);
+      const resetOption = document.createElement('option');
+      resetOption.value = '';
+      resetOption.textContent = 'Keep unconfirmed';
+      typeSelect.appendChild(resetOption);
+      for (const supportedType of MANUAL_MATCH_TYPES) {
+        const option = document.createElement('option');
+        option.value = supportedType;
+        option.textContent = supportedType;
+        typeSelect.appendChild(option);
+      }
+      typeSelect.value = matchTypeOverrides[match.match_id] || '';
+      typeSelect.addEventListener('change', async () => {
+        typeSelect.disabled = true;
+        const stored = await chrome.storage.local.get('matchTypeOverrides');
+        const latestOverrides = normalizeMatchTypeOverrides(stored.matchTypeOverrides);
+        if (MANUAL_MATCH_TYPES.includes(typeSelect.value)) {
+          latestOverrides[match.match_id] = typeSelect.value;
+        } else {
+          delete latestOverrides[match.match_id];
+        }
+        await chrome.storage.local.set({ matchTypeOverrides: latestOverrides });
+        matchTypeOverrides = latestOverrides;
+        renderAll();
+        renderMatchList();
+        updateStatusCounts();
+      });
+      typeControl.append(typeLabel, typeSelect);
+      row.insertBefore(typeControl, row.querySelector('.match-type-badge'));
+    }
 
     if (hasStages) {
       const panel = document.createElement('div');
@@ -2342,9 +2424,9 @@ function setStatus(msg, type = '', loading = false) {
 function updateStatusCounts(verb) {
   if (!allResults.length) return;
   const visibleResults  = allResults.filter(matchesSelectedDivision);
-  const confirmedUSPSA  = visibleResults.filter(r => isConfirmedUSPSA(r.match_type || 'Unknown'));
-  const unconfirmed     = visibleResults.filter(r => isLikelyUSPSA(r.match_type || 'Unknown') && !isConfirmedUSPSA(r.match_type || 'Unknown'));
-  const nonUspsa        = visibleResults.filter(r => !isLikelyUSPSA(r.match_type || 'Unknown'));
+  const confirmedUSPSA  = visibleResults.filter(r => isConfirmedUSPSA(effectiveMatchType(r)));
+  const unconfirmed     = visibleResults.filter(r => effectiveMatchType(r) === 'Unknown');
+  const nonUspsa        = visibleResults.filter(r => !isLikelyUSPSA(effectiveMatchType(r)));
   const uspsa           = confirmedUSPSA.length;
   const scored          = confirmedUSPSA.filter(r => r.overall_pct != null).length;
   const checked         = confirmedUSPSA.filter(r => !deselectedMatches.has(r.match_id)).length;

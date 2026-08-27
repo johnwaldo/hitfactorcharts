@@ -56,3 +56,11 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Treat Last 8 as a post-fetch view preference. Toggling it makes no request and never mutates fetched results, Match History, `matchCache`, or `lastMatchList`.
 - When fewer than eight matches qualify, use all available matches. State the visible and qualifying counts near the switch.
 - Keep the controls wrapping at narrow widths without page-level overflow.
+
+## Manual match type
+
+- Show a compact labelled native select only on Match History rows that remain unconfirmed after automatic detection. Offer **Keep unconfirmed**, USPSA, IDPA, IPSC, Steel Challenge, 3-Gun, PCSL, and ICORE.
+- Keep the effective-type badge and include checkbox synchronized with the saved choice. Confirmed page or detected types take precedence over stale overrides.
+- Persist overrides separately by match ID. Changing or resetting a type rerenders cached data locally without deleting history, scores, stages, or cache entries.
+- A saved non-USPSA choice suppresses later full-fetch score and stage requests for that match; explicit single-match refresh remains unrestricted.
+- Keep the selector keyboard-accessible and visible in both themes. Match History actions and controls wrap without page-level overflow at narrow widths.
