@@ -94,6 +94,48 @@ function normalizeDateOnly(value) {
   return `${match[1]}-${match[2]}-${match[3]}`;
 }
 
+function addCalendarDays(dateOnly, days) {
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  return localDateOnly(new Date(year, month - 1, day + days));
+}
+
+function normalizeFetchCoverage(value, today = localDateOnly()) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.allTime === true) return { allTime: true, intervals: [] };
+  if (!Array.isArray(value.intervals) || value.intervals.length === 0) return null;
+
+  const intervals = [];
+  for (const interval of value.intervals) {
+    const start = normalizeDateOnly(interval?.start);
+    const end = normalizeDateOnly(interval?.end);
+    if (!start || !end || start > end || end > today) return null;
+    intervals.push({ start, end });
+  }
+
+  intervals.sort((left, right) => left.start.localeCompare(right.start));
+  return {
+    allTime: false,
+    intervals: intervals.reduce((merged, interval) => {
+      const previous = merged.at(-1);
+      if (previous && interval.start <= addCalendarDays(previous.end, 1)) {
+        if (interval.end > previous.end) previous.end = interval.end;
+      } else {
+        merged.push({ ...interval });
+      }
+      return merged;
+    }, []),
+  };
+}
+
+function mergeFetchCoverage(existing, scope) {
+  const coverage = normalizeFetchCoverage(existing);
+  if (coverage?.allTime || scope.value === 'all') return { allTime: true, intervals: [] };
+  return normalizeFetchCoverage({
+    allTime: false,
+    intervals: [...(coverage?.intervals || []), { start: scope.start, end: scope.end }],
+  });
+}
+
 function resolveFetchTimeline(requested, referenceDate = new Date()) {
   const requestedValue = typeof requested === 'object' ? requested?.value : requested;
   const value = Object.hasOwn(FETCH_TIMELINES, requestedValue) ? requestedValue : '6m';
@@ -987,13 +1029,23 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
     if (filtered.futureDateCount) push(`Skipping ${filtered.futureDateCount} future-dated match(es).`);
     if (filtered.beforeCutoffCount) push(`Skipping ${filtered.beforeCutoffCount} match(es) before ${fetchScope.start}.`);
 
-    const stored = await chrome.storage.local.get(['lastMatchList', 'matchCache', 'matchTypeOverrides']);
+    const stored = await chrome.storage.local.get(['lastMatchList', 'matchCache', 'matchTypeOverrides', 'fetchCoverage']);
     const previousMatchList = stored.lastMatchList || [];
     const cache = stored.matchCache || {};
     const matchTypeOverrides = normalizeMatchTypeOverrides(stored.matchTypeOverrides);
     const preserveMissingHistory = fetchScope.value !== 'all' || rawMatchList.length === 0;
     let mergedMatchList = mergeMatchLists(previousMatchList, matchList, { preserveMissing: preserveMissingHistory });
-    await chrome.storage.local.set({ lastMatchList: mergedMatchList });
+    const hasUsableMatchDate = annotatedMatchList.some(match => {
+      const date = normalizeDateOnly(match.date);
+      return date && date <= localDateOnly();
+    });
+    const fetchCoverage = hasUsableMatchDate
+      ? mergeFetchCoverage(stored.fetchCoverage, fetchScope)
+      : normalizeFetchCoverage(stored.fetchCoverage);
+    await chrome.storage.local.set({
+      lastMatchList: mergedMatchList,
+      ...(fetchCoverage ? { fetchCoverage } : {}),
+    });
     const mergedById = new Map(mergedMatchList.map(match => [match.match_id, match]));
     const workMatches = matchList.map(match => mergedById.get(match.match_id) || match);
 
@@ -1090,7 +1142,7 @@ async function fetchScores(memberNumber, name, requestedTimeline) {
       return buildResult(match, {}, memberNumber);
     });
 
-    return { results: combinedResults, log, classificationData, _not_logged_in_uspsa, fetchScope };
+    return { results: combinedResults, log, classificationData, _not_logged_in_uspsa, fetchScope, fetchCoverage };
 
   } finally {
     if (tabId) chrome.tabs.remove(tabId).catch(() => {});

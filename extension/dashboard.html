@@ -240,14 +240,52 @@
     #timeFilter {
       display: flex; align-items: center; gap: 6px; padding: 0 24px 14px; flex-wrap: wrap;
     }
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
     .time-btn {
       padding: 6px 12px; border-radius: 6px; font-size: 12px;
       border: 1px solid #2a2d3a; background: #1a1d27; color: #888;
       cursor: pointer; user-select: none;
     }
-    .time-btn:hover { border-color: #4a9eff; color: #ccc; }
+    .time-btn:not(.unavailable):hover { border-color: #4a9eff; color: #ccc; }
     .time-btn.active { background: #1e3a5f; border-color: #4a9eff; color: #4a9eff; }
     .time-btn:focus-visible { outline: 2px solid #4a9eff; outline-offset: 2px; }
+    .time-btn.unavailable {
+      border-color: #343845;
+      color: #626877;
+      cursor: not-allowed;
+      position: relative;
+    }
+    .time-btn.unavailable:hover::after,
+    .time-btn.unavailable:focus-visible::after {
+      content: attr(data-unavailable-message);
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      z-index: 10;
+      width: max-content;
+      max-width: min(260px, calc(100vw - 32px));
+      padding: 7px 9px;
+      border: 1px solid #4a5060;
+      border-radius: 5px;
+      background: #252936;
+      color: #e6e9ef;
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 1.35;
+      text-align: left;
+      white-space: normal;
+      pointer-events: none;
+    }
     .last8-toggle {
       display: flex;
       align-items: center;
@@ -1165,6 +1203,9 @@
       color: #4a5060;
     }
     [data-theme="light"] .time-btn.active { background: #dbeafe; border-color: #2563eb; color: #2563eb; }
+    [data-theme="light"] .time-btn.unavailable { border-color: #c9ced8; color: #777f8f; }
+    [data-theme="light"] .time-btn.unavailable:hover::after,
+    [data-theme="light"] .time-btn.unavailable:focus-visible::after { background: #ffffff; border-color: #c0c4cc; color: #2c3040; }
     [data-theme="light"] .last8-toggle { border-left-color: #c0c4cc; }
     [data-theme="light"] #last8Status { color: #5a6478; }
     [data-theme="light"] .view-btn { background: #f0f1f4; border-color: #c0c4cc; color: #4a5060; }
@@ -1391,12 +1432,13 @@
 </div>
 
 <div id="timeFilter" role="group" aria-label="Analytics date range">
-  <button class="time-btn" type="button" data-date-preset="1m" aria-pressed="false">Last 1 month</button>
-  <button class="time-btn" type="button" data-date-preset="3m" aria-pressed="false">3 mo</button>
-  <button class="time-btn active" type="button" data-date-preset="6m" aria-pressed="true">6 mo</button>
-  <button class="time-btn" type="button" data-date-preset="1y" aria-pressed="false">1 yr</button>
-  <button class="time-btn" type="button" data-date-preset="3y" aria-pressed="false">3 yr</button>
-  <button class="time-btn" type="button" data-date-preset="all" aria-pressed="false">all time</button>
+  <span id="dateRangeAvailabilityHelp" class="visually-hidden">Fetch a longer timeline to use this range.</span>
+  <button class="time-btn" type="button" data-date-preset="1m" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">Last 1 month</button>
+  <button class="time-btn" type="button" data-date-preset="3m" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">3 mo</button>
+  <button class="time-btn active" type="button" data-date-preset="6m" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="true">6 mo</button>
+  <button class="time-btn" type="button" data-date-preset="1y" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">1 yr</button>
+  <button class="time-btn" type="button" data-date-preset="3y" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">3 yr</button>
+  <button class="time-btn" type="button" data-date-preset="all" data-unavailable-message="Fetch a longer timeline to use this range." aria-pressed="false">all time</button>
   <label id="last8ToggleWrap" class="last8-toggle">
     <span class="toggle-lbl">Last 8 matches</span>
     <span class="toggle-switch">

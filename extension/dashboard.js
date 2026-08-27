@@ -242,6 +242,7 @@ let selectedFetchTimeline = '6m'; // pre-fetch request scope; independent of ana
 let last8Matches = false;       // post-fetch analytics limit; never truncates cached history
 let matchTypeOverrides = {};    // match_id -> manual type for otherwise unconfirmed matches
 let lastFetchScope = null;
+let fetchCoverage = null;       // verified cumulative fetch intervals; null preserves pre-metadata behavior
 
 const FETCH_TIMELINE_PRESETS = Object.freeze({
   '1m':  { label: 'Last 1 month', months: 1 },
@@ -739,7 +740,9 @@ saveBtn.addEventListener('click', async () => {
       return;
     }
     // Clear cache and reset UI
-    await chrome.storage.local.remove(['matchCache', 'lastMatchList', 'stageOverrides']);
+    await chrome.storage.local.remove(['matchCache', 'lastMatchList', 'stageOverrides', 'fetchCoverage']);
+    fetchCoverage = null;
+    renderDateRangeFilter();
     allResults = [];
     stageOverrides = {};
     summaryBar.classList.remove('visible');
@@ -772,7 +775,7 @@ function hideOnboarding() {
 }
 
 // ── Restore persisted state on load ──────────────────────────────────────────
-chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision', 'fetchTimeline', 'last8Matches', 'matchTypeOverrides'], async d => {
+chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache', 'deselectedMatches', 'stageOverrides', 'classificationData', 'selectedDivision', 'fetchTimeline', 'last8Matches', 'matchTypeOverrides', 'fetchCoverage'], async d => {
   // Try restoring from sync if local has no credentials (e.g. after reinstall)
   if (!d.memberNumber && !d.name) {
     await restoreFromSync();
@@ -792,6 +795,9 @@ chrome.storage.local.get(['memberNumber', 'name', 'lastMatchList', 'matchCache',
   fetchTimelineSelect.value = selectedFetchTimeline;
   last8Matches = d.last8Matches === true;
   matchTypeOverrides = normalizeMatchTypeOverrides(d.matchTypeOverrides);
+  fetchCoverage = normalizeFetchCoverage(d.fetchCoverage);
+  ensureAvailableDatePreset();
+  renderDateRangeFilter();
   renderLast8Control();
 
   // Lock inputs if we already have saved credentials
@@ -923,7 +929,9 @@ fetchBtn.addEventListener('click', async () => {
       'Your member number or name has changed. This will clear all cached match data and re-fetch everything.\n\nContinue?'
     );
     if (!ok) return;
-    await chrome.storage.local.remove(['matchCache', 'lastMatchList', 'stageOverrides']);
+    await chrome.storage.local.remove(['matchCache', 'lastMatchList', 'stageOverrides', 'fetchCoverage']);
+    fetchCoverage = null;
+    renderDateRangeFilter();
     allResults = [];
     stageOverrides = {};
     summaryBar.classList.remove('visible');
@@ -953,6 +961,9 @@ fetchBtn.addEventListener('click', async () => {
 
     const { results, log, fetchScope } = response.data;
     lastFetchScope = fetchScope || fetchTimeline;
+    fetchCoverage = normalizeFetchCoverage(response.data.fetchCoverage);
+    ensureAvailableDatePreset();
+    renderDateRangeFilter();
 
     if (log?.length) {
       debugLogEl.textContent = log.join('\n');
@@ -1031,6 +1042,55 @@ function subtractCalendarMonths(dateOnly, months) {
   return localDateOnly(new Date(targetYear, targetMonth, Math.min(day, lastDay)));
 }
 
+function addCalendarDays(dateOnly, days) {
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  return localDateOnly(new Date(year, month - 1, day + days));
+}
+
+function normalizeFetchCoverage(value, today = localDateOnly()) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.allTime === true) return { allTime: true, intervals: [] };
+  if (!Array.isArray(value.intervals) || value.intervals.length === 0) return null;
+
+  const intervals = [];
+  for (const interval of value.intervals) {
+    const start = normalizeDateOnly(interval?.start);
+    const end = normalizeDateOnly(interval?.end);
+    if (!start || !end || start > end || end > today) return null;
+    intervals.push({ start, end });
+  }
+
+  intervals.sort((left, right) => left.start.localeCompare(right.start));
+  return {
+    allTime: false,
+    intervals: intervals.reduce((merged, interval) => {
+      const previous = merged.at(-1);
+      if (previous && interval.start <= addCalendarDays(previous.end, 1)) {
+        if (interval.end > previous.end) previous.end = interval.end;
+      } else {
+        merged.push({ ...interval });
+      }
+      return merged;
+    }, []),
+  };
+}
+
+function isDatePresetAvailable(presetKey, referenceDate = new Date()) {
+  const preset = DATE_RANGE_PRESETS[presetKey];
+  if (!preset) return false;
+  if (!fetchCoverage || fetchCoverage.allTime) return true;
+  if (preset.months == null) return false;
+  const end = localDateOnly(referenceDate);
+  const start = subtractCalendarMonths(end, preset.months);
+  return fetchCoverage.intervals.some(interval => interval.start <= start && interval.end >= end);
+}
+
+function ensureAvailableDatePreset(referenceDate = new Date()) {
+  if (isDatePresetAvailable(selectedDatePreset, referenceDate)) return;
+  const available = Object.keys(DATE_RANGE_PRESETS).filter(key => isDatePresetAvailable(key, referenceDate));
+  if (available.length > 0) selectedDatePreset = available.at(-1);
+}
+
 function activeDateBounds(referenceDate = new Date()) {
   const preset = DATE_RANGE_PRESETS[selectedDatePreset] || DATE_RANGE_PRESETS['6m'];
   if (preset.months == null) return null;
@@ -1066,15 +1126,21 @@ function renderLast8Control(totalCount = null, visibleCount = null) {
 
 function renderDateRangeFilter() {
   document.querySelectorAll('[data-date-preset]').forEach(button => {
-    const active = button.dataset.datePreset === selectedDatePreset;
+    const available = isDatePresetAvailable(button.dataset.datePreset);
+    const active = available && button.dataset.datePreset === selectedDatePreset;
     button.classList.toggle('active', active);
+    button.classList.toggle('unavailable', !available);
     button.setAttribute('aria-pressed', String(active));
+    button.setAttribute('aria-disabled', String(!available));
+    if (available) button.removeAttribute('aria-describedby');
+    else button.setAttribute('aria-describedby', 'dateRangeAvailabilityHelp');
+    button.title = available ? '' : 'Fetch a longer timeline to use this range.';
   });
 }
 
 document.querySelectorAll('[data-date-preset]').forEach(button => {
   button.addEventListener('click', () => {
-    if (!DATE_RANGE_PRESETS[button.dataset.datePreset]) return;
+    if (!DATE_RANGE_PRESETS[button.dataset.datePreset] || !isDatePresetAvailable(button.dataset.datePreset)) return;
     selectedDatePreset = button.dataset.datePreset;
     renderDateRangeFilter();
     renderAll();
