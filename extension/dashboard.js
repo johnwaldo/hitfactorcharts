@@ -3,13 +3,26 @@
 // ── Global state (declared first to avoid TDZ in event handlers below) ────────
 let allResults = [];
 
-// ── Size canvases to fill their containers ────────────────────────────────────
+// ── Size canvases to their visible CSS-pixel dimensions ───────────────────────
+function sizeCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.round(rect.width * dpr);
+  const height = Math.round(rect.height * dpr);
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+
+  canvas._logicalWidth = rect.width;
+  canvas._logicalHeight = rect.height;
+  canvas._canvasScaleX = width / rect.width;
+  canvas._canvasScaleY = height / rect.height;
+  return true;
+}
+
 function sizeCanvases() {
-  document.querySelectorAll('canvas').forEach(c => {
-    const renderedWidth = c.getBoundingClientRect().width;
-    const w = Math.floor(renderedWidth || c.parentElement?.clientWidth || 860);
-    if (c.width !== w) c.width = w;
-  });
+  document.querySelectorAll('canvas').forEach(sizeCanvas);
 }
 
 let resizeFrame = null;
@@ -17,7 +30,6 @@ function scheduleDashboardResize() {
   if (resizeFrame !== null) return;
   resizeFrame = requestAnimationFrame(() => {
     resizeFrame = null;
-    sizeCanvases();
     renderAll();
   });
 }
@@ -1106,7 +1118,6 @@ function renderAll() {
   });
   summaryBar.classList.add('visible');
   chartsEl.classList.add('visible');
-  sizeCanvases();
   syncChartModeControls();
 
   if (sorted.length === 0) {
@@ -1116,8 +1127,14 @@ function renderAll() {
       : currentView === 'ranked'
       ? 'No member-number confirmed scores.\nSwitch to "All Matches" to see name-matched results.'
       : 'No data.';
+    document.getElementById('chartPlaceSubtitle').textContent = '';
+    setPlacementVisible(!classifiersOnly);
+    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
     drawMessage(document.getElementById('chartTime'),  msg);
-    drawMessage(document.getElementById('chartPlace'), msg);
+    if (!classifiersOnly) drawMessage(document.getElementById('chartPlace'), msg);
     document.getElementById('statMatches').textContent = '0';
     document.getElementById('statAvg').textContent     = '—';
     document.getElementById('statBest').textContent    = '—';
@@ -1129,12 +1146,6 @@ function renderAll() {
       : adjustedOnly
       ? 'Adjusted % Over Time'
       : 'Score Over Time';
-    document.getElementById('chartPlaceSubtitle').textContent = '';
-    setPlacementVisible(!classifiersOnly);
-    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
-    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
     renderClassBox(selectedDiv);
     return;
   }
@@ -1148,8 +1159,14 @@ function renderAll() {
     const msg = selectedDiv
       ? `No ${divisionLabel(selectedDiv)} matches found in the selected date range.`
       : 'No matches found in the selected date range.';
+    document.getElementById('chartPlaceSubtitle').textContent = '';
+    setPlacementVisible(!classifiersOnly);
+    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
+    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
+      .forEach(id => { document.getElementById(id).style.display = 'none'; });
     drawMessage(document.getElementById('chartTime'), msg);
-    drawMessage(document.getElementById('chartPlace'), msg);
+    if (!classifiersOnly) drawMessage(document.getElementById('chartPlace'), msg);
     document.getElementById('statMatches').textContent = '0';
     document.getElementById('statAvg').textContent = '—';
     document.getElementById('statBest').textContent = '—';
@@ -1163,12 +1180,6 @@ function renderAll() {
       : adjustedOnly
       ? 'Adjusted % Over Time'
       : 'Score Over Time';
-    document.getElementById('chartPlaceSubtitle').textContent = '';
-    setPlacementVisible(!classifiersOnly);
-    ['chartNonClfSection', 'chartClfOverlaySection', 'chartAccuracySection', 'chartHitZoneSection']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
-    ['chartTimeSummary', 'chartAdjSummary', 'chartPlaceSummary', 'chartClfSummary']
-      .forEach(id => { document.getElementById(id).style.display = 'none'; });
     renderClassBox(selectedDiv);
     return;
   }
@@ -1316,8 +1327,8 @@ function renderAll() {
       document.getElementById('statAvg').textContent  = '—';
       document.getElementById('statBest').textContent = '—';
       document.getElementById('chartTimeTitle').textContent = 'Classifier Scores Over Time';
-      drawMessage(document.getElementById('chartTime'), 'No classifier stages found.\nRefresh matches to detect classifiers.');
       setPlacementVisible(false);
+      drawMessage(document.getElementById('chartTime'), 'No classifier stages found.\nRefresh matches to detect classifiers.');
       return;
     }
 
