@@ -47,6 +47,9 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Activate **6 mo** on every dashboard load. Exactly one preset must expose a visible active state and `aria-pressed="true"`.
 - Use compact native buttons with a clear keyboard focus ring. The group wraps at narrow widths rather than becoming a dropdown or creating horizontal page overflow.
 - Date-range changes update the existing cached analytics immediately. They do not hide or delete older Match History records.
+- After a successful match-list extraction, persist validated cumulative fetch intervals (or an explicit successful all-time fetch). A later narrower fetch must not erase broader coverage; malformed or missing metadata preserves legacy range behavior until a successful fetch establishes coverage.
+- Only presets fully contained by verified coverage are selectable. Unavailable presets remain focusable with `aria-disabled="true"`, a greyed state, and the hover/focus explanation: “Fetch a longer timeline to use this range.” Do not use native `disabled`, which would hide that help from keyboard users.
+- If a bounded fetch makes the active preset unavailable, select the broadest verified available preset. Last 8, division, match selection, cache contents, and single-match refresh never affect coverage.
 
 ## Fetch timeline
 
