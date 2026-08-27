@@ -1423,8 +1423,9 @@
     <canvas id="chartTime" height="380"></canvas>
     <div class="chart-note">
       <strong>Division %</strong> is your score relative to the top shooter in your division at that match — it tells you how you placed, but it only reflects who happened to show up in your division that day.
-      <strong>Adjusted %</strong> is a field-strength correction: it takes the top stage hit factor from every division at that match, translates each result to your division's equivalent using national HHF ratios from hitfactor.info, and measures you against the strongest normalized result.
-      Adjusted % is the more meaningful progress indicator because it compares you with the strongest normalized stage result at that match, regardless of division. Neither match metric is an official USPSA classification percentage; use Classifiers Only for nationally normalized classifier context.
+       <strong>Adjusted %</strong> is a field-strength correction: it takes the top stage hit factor from every division at that match, translates each result to your division's equivalent using national HHF ratios from hitfactor.info, and measures you against the strongest normalized result.
+       Adjusted % is the more meaningful progress indicator because it compares you with the strongest normalized stage result at that match, regardless of division. Neither match metric is an official USPSA classification percentage; use Classifiers Only for nationally normalized classifier context.
+       The numeric 40%, 60%, 75%, 85%, and 95% lines are neutral percentage references, not inferred USPSA classifications.
     </div>
     <div class="chart-summary" id="chartTimeSummary" style="display:none"></div>
     <div class="chart-summary chart-summary--adj" id="chartAdjSummary" style="display:none"></div>
@@ -1440,14 +1441,14 @@
   <div class="chart-section" id="chartNonClfSection" style="display:none">
     <div class="chart-section-header">
       <h3>Non-Classifier Stage Trend</h3>
-      <span class="chart-subtitle">Average stage % compared with each match's top shooter — not a USPSA classification</span>
+      <span class="chart-subtitle">Average stage % compared with each match's top shooter — neutral numeric guides, not USPSA classifications</span>
     </div>
     <canvas id="chartNonClf" height="380"></canvas>
   </div>
   <div class="chart-section" id="chartClfOverlaySection" style="display:none">
     <div class="chart-section-header">
       <h3>Classifier vs Match Score</h3>
-      <span style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">Are your classifier scores tracking your match performance?</span>
+      <span style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px">Numeric guides compare percentage references; they are not class bands</span>
     </div>
     <canvas id="chartClfOverlay" height="380"></canvas>
     <div class="chart-summary" id="chartClfSummary" style="display:none"></div>

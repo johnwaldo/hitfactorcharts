@@ -1467,6 +1467,7 @@ function renderAll() {
         {
           yLabel: 'Adjusted match %', yMin: 0, yMax: 100, invertY: false,
           trend: true, valueUnit: 'match%', preserveDuplicateDates: true,
+          showPercentageReferenceGuides: true,
         }
       );
     } else {
@@ -1483,6 +1484,7 @@ function renderAll() {
     drawMultiSeriesChart(document.getElementById('chartTime'), scoreSeries, allDates, {
       yLabel: 'Match performance %', yMin: 0, yMax: 100, invertY: false,
       trend: scoreSeries.length <= 2, valueUnit: 'match%',
+      showPercentageReferenceGuides: true,
     });
   }
 
@@ -1567,6 +1569,7 @@ function renderAll() {
     drawMultiSeriesChart(document.getElementById('chartNonClf'), nonClfSeries, nonClfDates, {
       yLabel: '% compared with top shooter', yMin: 0, yMax: 100, invertY: false,
       trend: true, valueUnit: 'top%', preserveDuplicateDates: true,
+      showPercentageReferenceGuides: true,
     });
   } else {
     nonClfSection.style.display = 'none';
@@ -1612,7 +1615,7 @@ function renderAll() {
     ];
     drawMultiSeriesChart(document.getElementById('chartClfOverlay'), overlaySeries, allOverlayDates, {
       yLabel: '%', yMin: 0, yMax: 100, invertY: false, trend: false, valueUnit: '%',
-      showClassBands: true,
+      showPercentageReferenceGuides: true,
     });
   } else {
     clfOverlaySection.style.display = 'none';

@@ -32,6 +32,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Non-classifier stage percentages are match-relative comparisons with each stage's top shooter. Present them on a linear 0–100% scale without USPSA classification bands, labels, colours, or warped geometry.
 - Keep same-day non-classifier matches as separate chart points and tooltips while rendering their shared date label only once.
 - Regular Score Over Time uses a linear percentage scale without classification bands, inferred class labels, class colours, or warped geometry. Division % and Adjusted % are match-performance signals, not official classifications.
+- Score Over Time, Adjusted % Only, Non-Classifier Stage Trend, and Classifier vs Match Score use neutral numeric reference guides at 40%, 60%, 75%, 85%, and 95%. Keep these guides linear, theme-aware, and unlabeled beyond their numeric axis ticks; never present them as classes or class-coloured regions.
 - Show GM/M/A/B/C/D context only for nationally normalized `clf_pct` values. Match-relative classifier fallbacks must be identified as such and must not receive inferred class labels.
 - Place **Adjusted % Only** beside **Classifiers Only** as matching native-checkbox switches. Both controls expose visible keyboard focus, wrap together at narrow widths, and never create page-level overflow.
 - Adjusted-only and classifiers-only modes are mutually exclusive. Adjusted-only displays cached adjusted points without raw fallback and uses a clear multi-line empty state when fewer than two usable points exist.

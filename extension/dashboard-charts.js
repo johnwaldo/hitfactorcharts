@@ -6,6 +6,43 @@
 
 const PAD        = { top: 24, right: 52, bottom: 44, left: 48 };
 const FONT       = '11px Inter, system-ui, sans-serif';
+// Neutral reference percentages for match-performance charts. These are numeric
+// guides only; official classifier charts retain their separate class semantics.
+const USPSA_PERCENTAGE_REFERENCE_GUIDES = [40, 60, 75, 85, 95];
+
+function chartYAxisTicks(rawMin, rawMax, showPercentageReferenceGuides = false) {
+  if (!showPercentageReferenceGuides) {
+    return Array.from({ length: 6 }, (_, index) => rawMin + (rawMax - rawMin) * index / 5);
+  }
+
+  return [...new Set([
+    rawMin,
+    ...USPSA_PERCENTAGE_REFERENCE_GUIDES.filter(value => value > rawMin && value < rawMax),
+    rawMax,
+  ])].sort((left, right) => left - right);
+}
+
+function drawYAxisTicks(ctx, area, toY, ticks) {
+  ctx.save();
+  ctx.strokeStyle = GRID_COLOR();
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+
+  ticks.forEach(value => {
+    const cy = toY(value);
+    ctx.beginPath();
+    ctx.moveTo(area.x0, cy);
+    ctx.lineTo(area.x0 + area.w, cy);
+    ctx.stroke();
+    ctx.fillStyle = TEXT_COLOR();
+    ctx.font = FONT;
+    ctx.textAlign = 'right';
+    ctx.fillText(value.toFixed(0), area.x0 - 5, cy + 3);
+  });
+
+  ctx.restore();
+}
 
 function selectAxisTickIndices(labels, positions, measureText, minGap = 10) {
   if (!labels.length || labels.length !== positions.length) return [];
@@ -183,7 +220,8 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
 
   const {
     yLabel = '', yMin, yMax, invertY = false, trend = false, valueUnit = '%',
-    showClassBands = false, preserveDuplicateDates = false,
+    showClassBands = false, showPercentageReferenceGuides = false,
+    preserveDuplicateDates = false,
   } = opts;
 
   const allY   = seriesArr.flatMap(s => s.points.map(p => p.y)).filter(v => v != null);
@@ -239,14 +277,12 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
     });
   }
 
-  // Grid
-  ctx.strokeStyle = GRID_COLOR(); ctx.lineWidth = 1;
-  for (let i = 0; i <= 5; i++) {
-    const v = rawMin + yRange * i / 5, cy = toY(v);
-    ctx.beginPath(); ctx.moveTo(area.x0, cy); ctx.lineTo(area.x0 + area.w, cy); ctx.stroke();
-    ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'right';
-    ctx.fillText(v.toFixed(0), area.x0 - 5, cy + 3);
-  }
+  drawYAxisTicks(
+    ctx,
+    area,
+    toY,
+    chartYAxisTicks(rawMin, rawMax, showPercentageReferenceGuides)
+  );
 
   // Axes
   ctx.strokeStyle = AXIS_COLOR(); ctx.lineWidth = 1;
@@ -450,7 +486,10 @@ function drawLineChart(canvas, points, opts = {}) {
   const area = chartArea(canvas);
   clearCanvas(ctx, canvas);
 
-  const { yLabel = '', yMin, yMax, invertY = false, color = '#4a9eff', trend = false } = opts;
+  const {
+    yLabel = '', yMin, yMax, invertY = false, color = '#4a9eff', trend = false,
+    showPercentageReferenceGuides = false,
+  } = opts;
 
   const xs     = points.map((_, i) => i);
   const ys     = points.map(p => p.y);
@@ -464,14 +503,12 @@ function drawLineChart(canvas, points, opts = {}) {
     return invertY ? area.y0 + norm * area.h : area.y0 + (1 - norm) * area.h;
   };
 
-  // Grid
-  ctx.strokeStyle = GRID_COLOR(); ctx.lineWidth = 1;
-  for (let i = 0; i <= 5; i++) {
-    const v = rawMin + yRange * i / 5, cy = toY(v);
-    ctx.beginPath(); ctx.moveTo(area.x0, cy); ctx.lineTo(area.x0 + area.w, cy); ctx.stroke();
-    ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'right';
-    ctx.fillText(v.toFixed(0), area.x0 - 5, cy + 3);
-  }
+  drawYAxisTicks(
+    ctx,
+    area,
+    toY,
+    chartYAxisTicks(rawMin, rawMax, showPercentageReferenceGuides)
+  );
 
   // Axes
   ctx.strokeStyle = AXIS_COLOR(); ctx.lineWidth = 1;
