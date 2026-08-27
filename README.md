@@ -143,7 +143,7 @@ The **Fetch timeline** dropdown beside **Fetch Scores** is separate: it limits n
 
 **As image:** Click the floppy-disk icon on any match row to open the export menu. Choose **Full Match** for a match summary card or any individual stage for a per-stage card. Both download as PNG at 2× resolution. Stage cards preserve separate M/NS or an explicitly combined M+NS value and omit unavailable hit columns.
 
-**As CSV:** Click **⤓ CSV** in the chart section header to download all currently visible match data as a spreadsheet. One row per stage, includes match name, division, class, overall %, div %, placement, stage HF, time, reported hit counts (A/B/C/D/M/NS/M+NS/P), classifier number, and official USPSA %. Unavailable source columns remain blank; reported zeroes remain zero.
+**As CSV:** Click **⤓ CSV** in the chart section header to download the same final analytics dataset shown by the charts as a spreadsheet. One row per stage, includes match name, division, class, overall %, div %, placement, stage HF, time, reported hit counts (A/B/C/D/M/NS/M+NS/P), classifier number, and official USPSA %. Unavailable source columns remain blank; reported zeroes remain zero. When no rows qualify, no file is downloaded; the status message explains whether the active division/date range, Scored view, unchecked matches, or Classifiers Only mode excluded the data.
 
 ### Filtering matches
 
