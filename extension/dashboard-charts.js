@@ -263,7 +263,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
   clearCanvas(ctx, canvas);
 
   const {
-    yLabel = '', yMin, yMax, invertY = false, trend = false, valueUnit = '%',
+    yLabel = '', yMin, yMax, invertY = false, trend = false, valueUnit = '%', yScale = 'linear',
     showClassBands = false, showPercentageReferenceGuides = false,
     preserveDuplicateDates = false,
   } = opts;
@@ -271,7 +271,10 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
   const allY   = seriesArr.flatMap(series => series.points.map(point => point.y)).filter(Number.isFinite);
   const rawMin = yMin != null ? yMin : Math.min(...allY);
   const rawMax = yMax != null ? yMax : Math.max(...allY);
-  const yRange = rawMax - rawMin || 1;
+  const scaleY = yScale === 'sqrt' ? value => Math.sqrt(Math.max(0, value)) : value => value;
+  const scaledMin = scaleY(rawMin);
+  const scaledMax = scaleY(rawMax);
+  const yRange = scaledMax - scaledMin || 1;
 
   // Build warp map for class-band-weighted Y-axis when showClassBands is active.
   // Falls back to null (linear scale) when fewer than two bands are visible.
@@ -282,7 +285,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
     return area.x0 + (idx / Math.max(allDates.length - 1, 1)) * area.w;
   };
   const toY = v => {
-    const norm = warpMap ? warpPct(v, warpMap) : (v - rawMin) / yRange;
+    const norm = warpMap ? warpPct(v, warpMap) : (scaleY(v) - scaledMin) / yRange;
     return invertY ? area.y0 + norm * area.h : area.y0 + (1 - norm) * area.h;
   };
 
