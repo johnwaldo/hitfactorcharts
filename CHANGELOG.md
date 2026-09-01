@@ -4,6 +4,18 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.6.9 — 2026-09-01
+
+### Added
+
+- Hit Zone bars now show legible A-hit percentages and a dotted raw-A% progression line.
+- Time-ordered charts now show dotted per-series least-squares progression lines when enough data is available.
+- Accuracy Trend now distinguishes reported C, D, M, and NS counts without splitting combined M+NS source data.
+
+### Fixed
+
+- The action icon now remains recognizable against light and dark themed browser toolbars.
+
 ## v1.6.8 — 2026-08-27
 
 ### Fixed
