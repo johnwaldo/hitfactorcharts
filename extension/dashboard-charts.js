@@ -634,10 +634,10 @@ function drawMessage(canvas, msg) {
 
 // ── Stacked bar chart — hit zone breakdown ────────────────────────────────────
 // Raw shares are stored on each bar. Only cumulative display boundaries are
-// transformed: 0–50% raw maps to 0–30% visual; 50–100% maps to 30–100%.
+// transformed: 0–75% raw maps to 0–45% visual; 75–100% maps to 45–100%.
 function hitZoneVisualPct(rawPct) {
   const bounded = Math.max(0, Math.min(100, rawPct));
-  return bounded <= 50 ? bounded * 0.6 : 30 + (bounded - 50) * 1.4;
+  return bounded <= 75 ? bounded * 0.6 : 45 + (bounded - 75) * 2.2;
 }
 
 function drawStackedBarChart(canvas, bars) {
@@ -681,6 +681,22 @@ function drawStackedBarChart(canvas, bars) {
       const yTop = area.y0 + area.h - (upperVisual / 100) * area.h;
       ctx.fillStyle = COLORS[seg];
       ctx.fillRect(cx - barW / 2, yTop, barW, yBottom - yTop);
+
+      if (seg === 'a' && bar.aPct != null) {
+        const label = `${bar.aPct.toFixed(2)}%`;
+        const labelHeight = 10;
+        ctx.save();
+        ctx.font = `600 ${labelHeight}px Inter, system-ui, sans-serif`;
+        const fits = barW >= ctx.measureText(label).width + 4 && yBottom - yTop >= labelHeight + 4;
+        if (fits) {
+          // Dark green is readable on the bright A segment in either dashboard theme.
+          ctx.fillStyle = '#092916';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, cx, yTop + (yBottom - yTop) / 2);
+        }
+        ctx.restore();
+      }
     });
 
     hitMap.push({ cx, cy: area.y0 + area.h / 2, bar });
