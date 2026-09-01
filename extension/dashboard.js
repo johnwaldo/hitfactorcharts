@@ -1701,47 +1701,64 @@ function renderAll() {
   }
 
   // ── Accuracy trend ────────────────────────────────────────────────────────
-  // Plots (M + NS) count per match over time. Requires stage hit data.
-  // Lower = better accuracy. Trend line shows direction.
+  // Plots reported C, D, M, and NS counts per match. Combined M+NS values are
+  // deliberately not split into separate series.
   const accuracySection = document.getElementById('chartAccuracySection');
   const accuracyPoints  = [];
   for (const r of viewSorted) {
     if (!r.stages?.length) continue;
-    let totalM = 0, totalNS = 0, totalCombined = 0, stagesWithHits = 0;
+    const totals = { c: 0, d: 0, m: 0, ns: 0 };
+    const available = { c: false, d: false, m: false, ns: false };
+    let hasCombinedMNs = false, stagesWithHits = 0;
     for (const s of getMetricStages(r)) {
+      for (const key of ['c', 'd']) {
+        const value = reportedStageHit(s, key);
+        if (value == null) continue;
+        available[key] = true;
+        totals[key] += value;
+      }
       const stageM = reportedStageHit(s, 'm');
       const stageNS = reportedStageHit(s, 'ns');
       if (stageM != null || stageNS != null) {
-        totalM += stageM || 0;
-        totalNS += stageNS || 0;
+        if (stageM != null) { available.m = true; totals.m += stageM; }
+        if (stageNS != null) { available.ns = true; totals.ns += stageNS; }
       } else {
-        const stageCombined = reportedStageHit(s, 'm_ns');
-        if (stageCombined == null) continue;
-        totalCombined += stageCombined;
+        if (reportedStageHit(s, 'm_ns') != null) hasCombinedMNs = true;
       }
       stagesWithHits++;
     }
     if (!stagesWithHits) continue;
     accuracyPoints.push({
       date: r.date,
-      y: totalM + totalNS + totalCombined,
       label: r.match_name,
       division: r.division,
-      m: totalM,
-      ns: totalNS,
-      m_ns: totalCombined,
+      c: available.c ? totals.c : null,
+      d: available.d ? totals.d : null,
+      m: hasCombinedMNs ? null : (available.m ? totals.m : null),
+      ns: hasCombinedMNs ? null : (available.ns ? totals.ns : null),
+      m_ns: hasCombinedMNs,
     });
   }
   accuracyPoints.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
   if (accuracyPoints.length >= 2) {
     accuracySection.style.display = '';
-    const accSeries = [{ label: 'M + NS', color: '#f44336', points: accuracyPoints }];
+    const accSeries = [
+      ['C', '#fdd835', 'c'], ['D', '#f97316', 'd'], ['M', '#ef4444', 'm'], ['NS', '#d946ef', 'ns'],
+    ].map(([label, color, key]) => ({
+      label,
+      color,
+      points: accuracyPoints.map(point => ({ ...point, y: point[key] })),
+    })).filter(series => series.points.some(point => Number.isFinite(point.y)));
     const accDates  = accuracyPoints.map(p => p.date);
-    drawMultiSeriesChart(document.getElementById('chartAccuracy'), accSeries, accDates, {
-      yLabel: 'M + NS', yMin: 0, yMax: null, invertY: false, trend: true, valueUnit: 'hits',
-      showClassBands: false,
-    });
+    if (accSeries.length) {
+      drawMultiSeriesChart(document.getElementById('chartAccuracy'), accSeries, accDates, {
+        yLabel: 'Reported hits (nonlinear)', yMin: 0, yMax: null, invertY: false, trend: true, valueUnit: 'hits', yScale: 'sqrt',
+        showClassBands: false,
+      });
+    } else {
+      drawMessage(document.getElementById('chartAccuracy'), 'M/NS are combined in the available source data.\nSeparate M and NS values are not estimated.');
+    }
   } else {
     accuracySection.style.display = 'none';
   }
