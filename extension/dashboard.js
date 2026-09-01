@@ -1463,7 +1463,7 @@ function renderAll() {
         : ' (match % — log in to USPSA.org for official %)');
     drawMultiSeriesChart(document.getElementById('chartTime'), series, allClfDates, {
       yLabel: 'Classifier %', yMin: 0, yMax: 100, invertY: false,
-      trend: series.length === 1, valueUnit: 'classifier%',
+      trend: true, valueUnit: 'classifier%',
       showClassBands: allClassifierScoresOfficial,
     });
     setPlacementVisible(false);
@@ -1562,7 +1562,7 @@ function renderAll() {
     if (adjPoints.length >= 2) scoreSeries.push(adjustedSeries);
     drawMultiSeriesChart(document.getElementById('chartTime'), scoreSeries, allDates, {
       yLabel: 'Match performance %', yMin: 0, yMax: 100, invertY: false,
-      trend: scoreSeries.length <= 2, valueUnit: 'match%',
+      trend: true, valueUnit: 'match%',
       showPercentageReferenceGuides: true,
     });
   }
@@ -1611,7 +1611,7 @@ function renderAll() {
         : `Field size: ${minT}–${maxT} competitors across matches`;
     }
     drawMultiSeriesChart(document.getElementById('chartPlace'), placeSeries, allPlaceDates, {
-      yLabel: 'Field beaten %', yMin: 0, yMax: 100, invertY: false, valueUnit: 'place%',
+      yLabel: 'Field beaten %', yMin: 0, yMax: 100, invertY: false, trend: true, valueUnit: 'place%',
     });
   } else {
     drawMessage(document.getElementById('chartPlace'), 'No placement data.');
@@ -1693,7 +1693,7 @@ function renderAll() {
       { label: 'Classifier %', color: '#ffd700', points: clfOverlayPoints },
     ];
     drawMultiSeriesChart(document.getElementById('chartClfOverlay'), overlaySeries, allOverlayDates, {
-      yLabel: '%', yMin: 0, yMax: 100, invertY: false, trend: false, valueUnit: '%',
+      yLabel: '%', yMin: 0, yMax: 100, invertY: false, trend: true, valueUnit: '%',
       showPercentageReferenceGuides: true,
     });
   } else {
