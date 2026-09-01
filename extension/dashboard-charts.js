@@ -217,9 +217,45 @@ function clearCanvas(ctx, canvas) {
   ctx.fillRect(0, 0, width, height);
 }
 
+function leastSquaresRegression(samples) {
+  const finiteSamples = samples.filter(sample => Number.isFinite(sample.x) && Number.isFinite(sample.y));
+  if (finiteSamples.length < 3) return null;
+
+  const n = finiteSamples.length;
+  const sumX = finiteSamples.reduce((sum, sample) => sum + sample.x, 0);
+  const sumY = finiteSamples.reduce((sum, sample) => sum + sample.y, 0);
+  const sumXY = finiteSamples.reduce((sum, sample) => sum + sample.x * sample.y, 0);
+  const sumXX = finiteSamples.reduce((sum, sample) => sum + sample.x * sample.x, 0);
+  const denominator = n * sumXX - sumX * sumX;
+  if (denominator === 0) return null;
+
+  const slope = (n * sumXY - sumX * sumY) / denominator;
+  const intercept = (sumY - slope * sumX) / n;
+  const first = finiteSamples[0];
+  const last = finiteSamples[n - 1];
+  return {
+    start: { x: first.x, y: slope * first.x + intercept },
+    end: { x: last.x, y: slope * last.x + intercept },
+  };
+}
+
+function drawDottedRegression(ctx, regression, toY, color) {
+  if (!regression) return;
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(regression.start.x, toY(regression.start.y));
+  ctx.lineTo(regression.end.x, toY(regression.end.y));
+  ctx.stroke();
+  ctx.restore();
+}
+
 // ── Multi-series line chart ───────────────────────────────────────────────────
 function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
-  const hasData = seriesArr.some(s => s.points.length > 0);
+  const hasData = seriesArr.some(series => series.points.some(point => Number.isFinite(point.y)));
   if (!hasData) { drawMessage(canvas, 'No data.'); return; }
 
   const ctx  = prepareChartContext(canvas);
@@ -232,7 +268,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
     preserveDuplicateDates = false,
   } = opts;
 
-  const allY   = seriesArr.flatMap(s => s.points.map(p => p.y)).filter(v => v != null);
+  const allY   = seriesArr.flatMap(series => series.points.map(point => point.y)).filter(Number.isFinite);
   const rawMin = yMin != null ? yMin : Math.min(...allY);
   const rawMax = yMax != null ? yMax : Math.max(...allY);
   const yRange = rawMax - rawMin || 1;
@@ -325,46 +361,47 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
     });
   }
 
-  // Trend lines (per series, single series only)
-  if (trend && seriesArr.length === 1) {
-    const pts = seriesArr[0].points;
-    if (pts.length >= 3) {
-      const xs  = pts.map((_, i) => i);
-      const ys  = pts.map(p => p.y);
-      const n   = pts.length;
-      const sx  = xs.reduce((a, v) => a + v, 0), sy = ys.reduce((a, v) => a + v, 0);
-      const sxy = xs.reduce((a, v, i) => a + v * ys[i], 0), sx2 = xs.reduce((a, v) => a + v * v, 0);
-      const slope = (n * sxy - sx * sy) / (n * sx2 - sx * sx);
-      const inter = (sy - slope * sx) / n;
-      ctx.strokeStyle = 'rgba(255,152,0,0.45)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(dateToCanvasX(pts[0].date, 0),          toY(inter));
-      ctx.lineTo(dateToCanvasX(pts[n - 1].date, n - 1), toY(slope * (n - 1) + inter));
-      ctx.stroke(); ctx.setLineDash([]);
-    }
+  // Dotted least-squares progression lines stay out of the interactive hit map.
+  if (trend) {
+    seriesArr.forEach(series => {
+      const samples = series.points.map((point, index) => ({
+        x: dateToCanvasX(point.date, preserveDuplicateDates ? index : null),
+        y: point.y,
+      }));
+      drawDottedRegression(ctx, leastSquaresRegression(samples), toY, series.color);
+    });
   }
 
   // Lines + dots
   const hitMap = [];
   seriesArr.forEach(s => {
-    const pts = s.points.filter(p => p.y != null);
-    if (!pts.length) return;
+    const points = s.points
+      .map((point, index) => ({ point, index }))
+      .filter(({ point }) => Number.isFinite(point.y));
+    if (!points.length) return;
 
     ctx.strokeStyle = s.color; ctx.lineWidth = s.dash ? 1.5 : 2;
     if (s.dash) ctx.setLineDash([6, 4]);
     ctx.beginPath();
-    pts.forEach((p, i) => {
-      const cx = dateToCanvasX(p.date, i), cy = toY(p.y);
-      i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+    let priorPointWasUnavailable = true;
+    s.points.forEach((point, index) => {
+      if (!Number.isFinite(point.y)) {
+        priorPointWasUnavailable = true;
+        return;
+      }
+      const cx = dateToCanvasX(point.date, preserveDuplicateDates ? index : null), cy = toY(point.y);
+      if (priorPointWasUnavailable) ctx.moveTo(cx, cy);
+      else ctx.lineTo(cx, cy);
+      priorPointWasUnavailable = false;
     });
     ctx.stroke();
     if (s.dash) ctx.setLineDash([]);
 
-    pts.forEach((p, index) => {
-      const cx = dateToCanvasX(p.date, index), cy = toY(p.y);
+    points.forEach(({ point, index }) => {
+      const cx = dateToCanvasX(point.date, preserveDuplicateDates ? index : null), cy = toY(point.y);
       ctx.fillStyle = s.color;
       ctx.beginPath(); ctx.arc(cx, cy, s.dash ? 3 : 4, 0, Math.PI * 2); ctx.fill();
-      hitMap.push({ cx, cy, color: s.color, seriesLabel: s.label, valueUnit, ...p });
+      hitMap.push({ cx, cy, color: s.color, seriesLabel: s.label, valueUnit, ...point });
     });
   });
 
@@ -532,16 +569,13 @@ function drawLineChart(canvas, points, opts = {}) {
   ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
   ctx.fillText(yLabel, 0, 0); ctx.restore();
 
-  // Trend
-  if (trend && points.length >= 3) {
-    const n = points.length;
-    const sx = xs.reduce((a, v) => a + v, 0), sy = ys.reduce((a, v) => a + v, 0);
-    const sxy = xs.reduce((a, v, i) => a + v * ys[i], 0), sx2 = xs.reduce((a, v) => a + v * v, 0);
-    const slope = (n * sxy - sx * sy) / (n * sx2 - sx * sx);
-    const inter = (sy - slope * sx) / n;
-    ctx.strokeStyle = 'rgba(255,152,0,0.45)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
-    ctx.beginPath(); ctx.moveTo(toX(0), toY(inter)); ctx.lineTo(toX(n - 1), toY(slope * (n - 1) + inter));
-    ctx.stroke(); ctx.setLineDash([]);
+  if (trend) {
+    drawDottedRegression(
+      ctx,
+      leastSquaresRegression(points.map((point, index) => ({ x: toX(index), y: point.y }))),
+      toY,
+      color
+    );
   }
 
   // Line
@@ -703,6 +737,17 @@ function drawStackedBarChart(canvas, bars) {
 
   });
 
+  const aTrend = leastSquaresRegression(bars.map((bar, index) => ({
+    x: area.x0 + gap * index + gap / 2,
+    y: bar.aPct,
+  })));
+  drawDottedRegression(
+    ctx,
+    aTrend,
+    pct => area.y0 + area.h - (hitZoneVisualPct(pct) / 100) * area.h,
+    COLORS.a
+  );
+
   // X labels
   ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'center';
   const barLabels = formatAxisDateLabels(bars.map(bar => bar.date));
@@ -744,6 +789,20 @@ function drawStackedBarChart(canvas, bars) {
     ctx.fillText(SEG_LABELS[seg], lx + 14, ly);
     lx += itemWidth;
   });
+  if (aTrend) {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = COLORS.a;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(lx, ly - 3);
+    ctx.lineTo(lx + 12, ly - 3);
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = TEXT_COLOR(); ctx.font = FONT; ctx.textAlign = 'left';
+    ctx.fillText('A% trend', lx + 16, ly);
+  }
 
   // Tooltip
   canvas._hitMap    = hitMap;
