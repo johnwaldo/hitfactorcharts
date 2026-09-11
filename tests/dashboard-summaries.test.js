@@ -104,6 +104,10 @@ test('non-classifier summaries add badged finite best and worst values', () => {
 });
 
 test('classifier fallback stays unbadged while official percentages receive official badges', () => {
+  context.leastSquaresRegression = samples => ({
+    start: { y: samples[0].y },
+    end: { y: samples.at(-1).y },
+  });
   const fallbackTiles = context.classifierTilesForTest([
     { stages: [{ isClassifier: true, pct: 45 }], overallPct: 55 },
     { stages: [{ isClassifier: true, pct: 50 }], overallPct: 60 },
@@ -114,6 +118,10 @@ test('classifier fallback stays unbadged while official percentages receive offi
   ]);
   assert.doesNotMatch(fallbackTiles[0], /performance-badge/);
   assert.doesNotMatch(fallbackTiles[1], /performance-badge/);
+  assert.match(fallbackTiles[3], /Match finish trend/);
+  assert.match(fallbackTiles[3], /\+25\.0%/);
+  assert.match(fallbackTiles[3], /Improving/);
+  assert.doesNotMatch(fallbackTiles.join(''), /(?:correlation|association)/i);
 
   const officialTiles = context.classifierTilesForTest([
     { stages: [{ isClassifier: true, clf_pct: 75 }], overallPct: 70 },
@@ -125,6 +133,17 @@ test('classifier fallback stays unbadged while official percentages receive offi
   ]);
   assert.match(officialTiles[0], /A Class, official classifier percentage/);
   assert.doesNotMatch(officialTiles[0], />≈</);
+});
+
+test('classifier match finish trend is unavailable with fewer than three match scores', () => {
+  const tiles = context.classifierTilesForTest([
+    { stages: [{ isClassifier: true, clf_pct: 75 }], overallPct: 70 },
+    { stages: [{ isClassifier: true, clf_pct: 76 }], overallPct: 71 },
+  ]);
+
+  assert.match(tiles[3], /Match finish trend/);
+  assert.match(tiles[3], /At least 3 comparable results are required/);
+  assert.match(tiles[3], /Not enough data/);
 });
 
 test('missing placement and non-classifier values remain unavailable rather than zero', () => {
