@@ -60,25 +60,13 @@ function _overallTrend(values) {
   const samples = values
     .map((value, index) => ({ x: index, y: value }))
     .filter(sample => Number.isFinite(sample.y));
+  if (samples.length < 3) return null;
   const regression = leastSquaresRegression(samples);
   if (!regression) return null;
   return {
     delta: regression.end.y - regression.start.y,
     count: samples.length,
   };
-}
-
-function _pearsonCorrelation(pairs) {
-  const finite = pairs.filter(pair => Number.isFinite(pair.x) && Number.isFinite(pair.y));
-  if (finite.length < 3) return null;
-  const meanX = _avg(finite.map(pair => pair.x));
-  const meanY = _avg(finite.map(pair => pair.y));
-  const numerator = finite.reduce((sum, pair) => sum + (pair.x - meanX) * (pair.y - meanY), 0);
-  const spreadX = finite.reduce((sum, pair) => sum + Math.pow(pair.x - meanX, 2), 0);
-  const spreadY = finite.reduce((sum, pair) => sum + Math.pow(pair.y - meanY, 2), 0);
-  const denominator = Math.sqrt(spreadX * spreadY);
-  if (!denominator) return null;
-  return { r: numerator / denominator, count: finite.length };
 }
 
 function _signed(value, digits = 1) {
@@ -376,8 +364,6 @@ function _nonClassifierTiles(points) {
 function _classifierData(sorted) {
   const officialScores = [];
   const fallbackScores = [];
-  const officialPairs = [];
-  const mixedPairs = [];
   const matchScores = [];
 
   for (const record of sorted) {
@@ -391,28 +377,15 @@ function _classifierData(sorted) {
     const matchScore = effectiveOverallPct(record);
     if (!Number.isFinite(matchScore)) continue;
     matchScores.push(matchScore);
-    if (official.length) officialPairs.push({ x: _avg(official), y: matchScore });
-    if (fallback.length) mixedPairs.push({ x: _avg(official.length ? official : fallback), y: matchScore });
   }
 
   const useOfficial = officialScores.length > 0;
   const scores = useOfficial ? officialScores : fallbackScores;
-  const useOfficialPairs = officialPairs.length >= 3;
   return {
     scores,
     basis: useOfficial ? 'Official USPSA national HHF' : 'Match-relative classifier fallback',
-    pairs: useOfficialPairs ? officialPairs : mixedPairs,
-    pairBasis: useOfficialPairs ? 'Official classifier % only' : 'Mixed basis, explicitly labelled',
     matchScores,
   };
-}
-
-function _correlationDescription(r) {
-  const magnitude = Math.abs(r);
-  if (magnitude >= 0.7) return 'Strong association';
-  if (magnitude >= 0.4) return 'Moderate association';
-  if (magnitude >= 0.2) return 'Weak association';
-  return 'Little association';
 }
 
 function _classifierTiles(sorted) {
@@ -422,7 +395,6 @@ function _classifierTiles(sorted) {
     ? _recentComparison(data.scores, recentSize)
     : null;
   const averageMatchScore = _avg(data.matchScores);
-  const correlation = _pearsonCorrelation(data.pairs);
 
   return [
     recent
@@ -455,15 +427,7 @@ function _classifierTiles(sorted) {
         meta: `Unofficial match-performance equivalent · n=${data.matchScores.length}`,
         status: _contextStatus('Match context', '◎'),
       }),
-    correlation
-      ? _insightTile({
-        label: 'Classifier correlation',
-        value: `r ${correlation.r.toFixed(2)}`,
-        comparison: `${_correlationDescription(correlation.r)} · association only`,
-        meta: `${data.pairBasis} · n=${correlation.count}`,
-        status: _contextStatus('Context, not causation', '↔'),
-      })
-      : _unavailableTile('Classifier correlation', 'At least 3 paired matches with variation are required.'),
+    _overallTrendTile('Match finish trend', data.matchScores),
   ];
 }
 

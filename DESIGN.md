@@ -59,16 +59,17 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Every insight tile identifies its metric, primary value, comparison basis,
   and sample size. Directional tiles use **Improving**, **Stable**, or
   **Needs attention**; non-directional values use explicit labels such as
-  **Field context**, **Overall view**, or **Association only** instead of
+  **Field context**, **Overall view**, or **Match context** instead of
   implying progress.
 - Overall percentage trends report the least-squares predicted first-to-last
   change for the filtered view. Score, placement, non-classifier, accuracy,
   hit-zone, and classifier insights use the same final dataset and
   stage-inclusion rules as their charts.
-- Classifier correlation is Pearson `r` across per-match classifier averages
-  paired with that match score, requires at least three varying pairs,
-  displays `n`, and is described only as an association. Prefer official
-  `clf_pct`; label any match-relative fallback and never infer a class from it.
+- Classifier summaries include a Match finish trend: the least-squares predicted
+  first-to-last percentage change across the current filtered match finishes.
+  It requires at least three comparable match finishes, displays `n`, and uses
+  the standard directional status. Prefer official `clf_pct`; label any
+  match-relative fallback and never infer a class from it.
 - Accuracy share tiles compare the last three matches with the prior baseline.
   Higher A is positive; lower B/C/D/M/NS is positive. Hit-zone tiles pair
   average shares with least-squares percentage-point trends using the same
@@ -98,7 +99,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
   `Class`; the approximation mark and accessible label keep it visibly
   unofficial. Official `clf_pct` uses the same hierarchy without `≈` and
   identifies itself as official to assistive technology. Never badge counts,
-  placement/field-beaten, variance, correlation, or hit-zone shares. Badges
+  placement/field-beaten, variance, trend deltas, or hit-zone shares. Badges
   include readable text as well as a theme-safe color, wrap without overflow,
   and remain compact from 375px through wide layouts.
 - Placement Over Time and Non-Classifier Stage Trend each use four insight tiles
