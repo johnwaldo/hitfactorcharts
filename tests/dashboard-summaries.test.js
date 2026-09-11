@@ -65,7 +65,7 @@ test('recent match score receives an unofficial class-equivalent badge', () => {
   assert.match(firstTile, /Approximately B Class, unofficial match-performance equivalent/);
 });
 
-test('placement summaries add best and worst context without class badges', () => {
+test('placement summaries add field-relative rank context without class badges', () => {
   const html = context.placementTilesForTest([
     { div_place: 1, div_total: 10 },
     { div_place: 5, div_total: 10 },
@@ -73,11 +73,21 @@ test('placement summaries add best and worst context without class badges', () =
     { div_place: 4, div_total: 10 },
   ]).join('');
 
+  assert.match(html, /Overall Rank Average/);
+  assert.match(html, /Average placement: 3rd of 10 in the relevant field/);
+  assert.match(html, /Recent placement/);
+  assert.match(html, /Average placement: 4th of 10 in the relevant field/);
   assert.match(html, /Best placement/);
   assert.match(html, /90\.0%/);
+  assert.match(html, /1st of 10 in the relevant field/);
+  assert.match(html, /insight-tile--positive[\s\S]*?Best result/);
   assert.match(html, /Worst placement/);
   assert.match(html, /50\.0%/);
+  assert.match(html, /5th of 10 in the relevant field/);
+  assert.match(html, /insight-tile--negative[\s\S]*?Lowest result/);
   assert.doesNotMatch(html, /performance-badge/);
+  assert.doesNotMatch(html, /≈/);
+  assert.doesNotMatch(html, /Class/);
 });
 
 test('non-classifier summaries add badged finite best and worst values', () => {
