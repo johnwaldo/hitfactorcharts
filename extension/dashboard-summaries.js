@@ -182,6 +182,38 @@ function _extremeTile(label, values, direction, comparison, badgeKind = '') {
   });
 }
 
+function _ordinal(value) {
+  const rounded = Math.round(value);
+  const remainder = rounded % 100;
+  if (remainder >= 11 && remainder <= 13) return `${rounded}th`;
+  return `${rounded}${['th', 'st', 'nd', 'rd'][rounded % 10] || 'th'}`;
+}
+
+function _averagePlacementContext(entries) {
+  const averagePlace = _avg(entries.map(entry => entry.place));
+  const averageTotal = _avg(entries.map(entry => entry.total));
+  return `Average placement: ${_ordinal(averagePlace)} of ${Math.round(averageTotal)} in the relevant field`;
+}
+
+function _placementExtremeTile(label, entries, direction) {
+  if (!entries.length) return _unavailableTile(label, 'Placement data is unavailable.');
+  const best = direction === 'best';
+  const entry = entries.reduce((selected, candidate) => (
+    best
+      ? candidate.fieldBeaten > selected.fieldBeaten ? candidate : selected
+      : candidate.fieldBeaten < selected.fieldBeaten ? candidate : selected
+  ));
+  return _insightTile({
+    label,
+    value: `${entry.fieldBeaten.toFixed(1)}%`,
+    comparison: `${_ordinal(entry.place)} of ${entry.total} in the relevant field`,
+    meta: `${best ? 'Highest' : 'Lowest'} percentage of the relevant field beaten`,
+    status: best
+      ? { tone: 'positive', icon: '★', label: 'Best result' }
+      : { tone: 'negative', icon: '◇', label: 'Lowest result' },
+  });
+}
+
 function _adjustedPairs(sorted) {
   const pairs = [];
   for (const record of sorted) {
@@ -271,24 +303,43 @@ function _scoreTiles(sorted) {
 }
 
 function _placementTiles(sorted) {
-  const fieldBeaten = sorted
-    .filter(record => record.div_place != null && record.div_total > 0)
-    .map(record => (1 - record.div_place / record.div_total) * 100);
+  const placements = sorted
+    .filter(record => Number.isFinite(record.div_place)
+      && Number.isFinite(record.div_total)
+      && record.div_place >= 1
+      && record.div_place <= record.div_total)
+    .map(record => ({
+      place: record.div_place,
+      total: record.div_total,
+      fieldBeaten: (1 - record.div_place / record.div_total) * 100,
+    }));
+  const fieldBeaten = placements.map(placement => placement.fieldBeaten);
   const average = _avg(fieldBeaten);
+  const recentPlacements = placements.slice(-3);
+  const recent = _recentComparison(fieldBeaten);
   const averageTile = average == null
     ? _unavailableTile('Overall Rank Average', 'Placement data is unavailable.')
     : _insightTile({
       label: 'Overall Rank Average',
       value: `${average.toFixed(1)}%`,
       comparison: 'Average percentage of the relevant field beaten',
-      meta: `Current filtered view · n=${fieldBeaten.length}`,
+      meta: `${_averagePlacementContext(placements)} · n=${placements.length}`,
       status: _contextStatus('Overall view', '◎'),
     });
+  const recentTile = recent
+    ? _insightTile({
+      label: 'Recent placement',
+      value: `${recent.recentAvg.toFixed(1)}%`,
+      comparison: `${_signed(recent.delta)}% vs prior ${recent.priorAvg.toFixed(1)}%`,
+      meta: `${_averagePlacementContext(recentPlacements)} · recent ${recent.recentCount} vs prior ${recent.priorCount}`,
+      status: _trendStatus(recent.delta),
+    })
+    : _unavailableTile('Recent placement', 'At least 4 results are required.');
   return [
     averageTile,
-    _comparisonTile('Recent placement', _recentComparison(fieldBeaten), '%'),
-    _extremeTile('Best placement', fieldBeaten, 'best', 'Highest percentage of the relevant field beaten'),
-    _extremeTile('Worst placement', fieldBeaten, 'worst', 'Lowest percentage of the relevant field beaten'),
+    recentTile,
+    _placementExtremeTile('Best placement', placements, 'best'),
+    _placementExtremeTile('Worst placement', placements, 'worst'),
   ];
 }
 

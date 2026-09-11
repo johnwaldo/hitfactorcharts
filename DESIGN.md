@@ -99,8 +99,12 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Placement Over Time and Non-Classifier Stage Trend each use four insight tiles
   on wide screens and stack at 640px or below. Both include recent and overall
   context plus best and worst finite values from the filtered view. Placement
-  best/worst values remain unbadged field-beaten percentages; non-classifier
-  best/worst values may use the explicitly unofficial performance shorthand.
+  tiles retain field-beaten percentages and add readable field-relative place of
+  total context: averages for Overall and Recent, and the actual ordinal result
+  for Best and Worst. Best is visibly labeled as a positive result and Worst as
+  a negative result; neither uses a performance/class badge, approximation mark,
+  or USPSA/national-rank claim. Non-classifier best/worst values may use the
+  explicitly unofficial performance shorthand.
 - A captured GM hit-factor comparison is a separate, neutrally styled performance metric. Label it as an actual GM benchmark and never use it to classify the reporting shooter or replace Adjusted %.
 - Place **Division performance**, **Adjusted %**, and **Time % (experimental)** beside **Classifiers Only** as matching native-checkbox switches. All controls expose visible keyboard focus, wrap together at narrow widths, and never create page-level overflow.
 - Division performance, Adjusted %, and Time % are independently selectable and shown together by default when each has at least two valid points. Omit an unavailable selected metric with a clear explanation; never substitute or fabricate points.
