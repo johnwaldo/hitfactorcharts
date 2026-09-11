@@ -4,6 +4,20 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.8.3 — 2026-09-11
+
+### Changed
+
+- Placement Over Time summaries now pair field-beaten percentages with explicit,
+  field-relative placement context without implying a USPSA classification.
+- Classifier vs Match Performance now shows a readable match-finish trend instead
+  of a Pearson-correlation value.
+
+### Fixed
+
+- Accuracy Trend summaries now label every nonzero predicted change as improving
+  or needing attention according to the metric's direction.
+
 ## v1.8.2 — 2026-09-09
 
 ### Added
