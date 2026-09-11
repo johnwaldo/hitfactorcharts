@@ -49,9 +49,11 @@ This is a leaf task. The implementation PR must use `Resolves #144`.
 
 - **Callers/readers:** `extension/dashboard.js:1815-1865` builds raw `accuracyPoints`; `generateSummaries` passes them to `_outcomeTiles(..., 'percentage')` at `extension/dashboard-summaries.js:475`.
 - **Writers/mutation paths:** `_renderSummary` replaces only dashboard tile HTML. No storage, fetch, schema, or data mutation path changes.
-- **Existing verification/tests:** `tests/dashboard-summaries.test.js` loads the summary module in a VM and already asserts accuracy direction/color semantics.
-- **Schemas/config:** Existing `accuracyPoints` fields remain unchanged; no migration, generated output, or configuration surface exists.
-- **Cleanup/rollback paths:** Revert the three scoped files together; cached match data is not altered.
+- **Tests/fixtures:** `tests/dashboard-summaries.test.js` loads the summary module in a VM and already asserts accuracy direction/color semantics.
+- **Schemas/config:** Existing `accuracyPoints` fields remain unchanged; no configuration surface changes.
+- **Generated/deployed mirrors:** `extension/dashboard-summaries.js` and `DESIGN.md` are direct source files; repository inspection found no generated mirror.
+- **Migrations/backfills:** N/A because `extension/dashboard-summaries.js` only changes derived tile status at render time and persists no data.
+- **Cleanup/rollback paths:** Revert `extension/dashboard-summaries.js`, `tests/dashboard-summaries.test.js`, and `DESIGN.md` together; cached match data is not altered.
 
 ### Implementation Steps
 

@@ -49,9 +49,11 @@ This is a leaf task. The implementation PR must use `Resolves #142`.
 
 - **Callers/readers:** `extension/dashboard.js:1725-1727` renders Field beaten % from filtered records; `_placementTiles` consumes the same sorted records and `generateSummaries` writes it to `chartPlaceSummary` at `extension/dashboard-summaries.js:472`.
 - **Writers/mutation paths:** `_renderSummary` writes tile HTML only. `div_place` and `div_total` are read-only cached values; no storage or fetch code changes.
-- **Existing verification/tests:** `tests/dashboard-summaries.test.js:68-81` already exercises placement tiles and explicitly prohibits `performance-badge` markup.
-- **Schemas/config:** The task uses existing `div_place` and `div_total`; no schema, config, generated output, or migration changes.
-- **Cleanup/rollback paths:** Revert the scoped summary, test, and design changes together; cached match records require no repair.
+- **Tests/fixtures:** `tests/dashboard-summaries.test.js:68-81` already exercises placement tiles and explicitly prohibits `performance-badge` markup.
+- **Schemas/config:** The task uses existing `div_place` and `div_total`; no schema or configuration changes.
+- **Generated/deployed mirrors:** `extension/dashboard-summaries.js` and `DESIGN.md` are direct source files; repository inspection found no generated mirror.
+- **Migrations/backfills:** N/A because `extension/dashboard-summaries.js` reads existing `div_place` and `div_total` values without changing their record shape.
+- **Cleanup/rollback paths:** Revert `extension/dashboard-summaries.js`, `tests/dashboard-summaries.test.js`, and `DESIGN.md` together; cached match records require no repair.
 
 ### Implementation Steps
 

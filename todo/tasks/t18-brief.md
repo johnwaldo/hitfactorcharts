@@ -49,9 +49,11 @@ This is a leaf task. The implementation PR must use `Resolves #143`.
 
 - **Callers/readers:** `extension/dashboard.js:1769-1813` supplies the Classifier vs Match chart; `_classifierData` in `extension/dashboard-summaries.js:325-356` already collects `matchScores`; `generateSummaries` calls `_classifierTiles` at `:474`.
 - **Writers/mutation paths:** `_renderSummary` writes the summary HTML only. The chart, filters, stored records, network calls, and score calculation remain unchanged.
-- **Existing verification/tests:** `tests/dashboard-summaries.test.js` exposes `_classifierTiles` through its VM harness and has official/fallback classifier fixtures.
-- **Schemas/config:** No record shape, generated artifact, migration, or deployment mirror changes.
-- **Cleanup/rollback paths:** Revert the scoped helper, test, and DESIGN.md updates together; no user data requires cleanup.
+- **Tests/fixtures:** `tests/dashboard-summaries.test.js` exposes `_classifierTiles` through its VM harness and has official/fallback classifier fixtures.
+- **Schemas/config:** N/A because existing match records and dashboard configuration are read unchanged by the replacement summary tile.
+- **Generated/deployed mirrors:** `extension/dashboard-summaries.js` and `DESIGN.md` are direct source files; repository inspection found no generated mirror.
+- **Migrations/backfills:** N/A because `extension/dashboard-summaries.js` changes only a derived tile and persists no records.
+- **Cleanup/rollback paths:** Revert `extension/dashboard-summaries.js`, `tests/dashboard-summaries.test.js`, and `DESIGN.md` together; no user data requires cleanup.
 
 ### Implementation Steps
 
