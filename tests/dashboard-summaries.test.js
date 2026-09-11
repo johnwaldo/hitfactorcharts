@@ -126,20 +126,24 @@ test('missing placement and non-classifier values remain unavailable rather than
   assert.match(nonClassifier, /Not enough data/);
 });
 
-test('outcome summaries show color-coded improving or declining percentage changes', () => {
+test('accuracy trends classify every nonzero percentage change directionally', () => {
   context.leastSquaresRegression = samples => ({
     start: { y: samples[0].y },
     end: { y: samples.at(-1).y },
   });
 
-  const improving = context.outcomeTilesForTest([{ c: 4 }, { c: 2 }, { c: 1 }], 'percentage').join('');
+  const improving = context.outcomeTilesForTest([{ ns: 4 }, { ns: 3.8 }, { ns: 3.6 }], 'percentage').join('');
   assert.match(improving, /insight-tile--positive/);
   assert.match(improving, /Improving/);
-  assert.match(improving, /-3\.0% predicted change/);
+  assert.match(improving, /-0\.4% predicted change/);
   assert.doesNotMatch(improving, /pp/);
 
-  const declining = context.outcomeTilesForTest([{ d: 1 }, { d: 2 }, { d: 4 }], 'percentage').join('');
-  assert.match(declining, /insight-tile--negative/);
-  assert.match(declining, /Declining/);
-  assert.match(declining, /\+3\.0% predicted change/);
+  const needsAttention = context.outcomeTilesForTest([{ a: 10 }, { a: 9.8 }, { a: 9.6 }], 'percentage').join('');
+  assert.match(needsAttention, /insight-tile--negative/);
+  assert.match(needsAttention, /Needs attention/);
+  assert.match(needsAttention, /-0\.4% predicted change/);
+
+  const stable = context.outcomeTilesForTest([{ a: 10 }, { a: 10 }, { a: 10 }], 'percentage').join('');
+  assert.match(stable, /insight-tile--neutral/);
+  assert.match(stable, /Stable/);
 });
