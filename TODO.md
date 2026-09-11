@@ -15,7 +15,7 @@
 - [x] t14 Expand class-equivalent badges and four-tile performance summaries #auto-dispatch tier:standard priority:medium status:available ref:GH#125 pr:#129 completed:2026-09-09
 - [x] t15 Make Time % the default exclusive Score Over Time mode #auto-dispatch tier:standard priority:medium status:in-progress ref:GH#126 pr:#127 completed:2026-09-09
 - [x] t16 Give Accuracy Trend a disclosed nonlinear low-percentage scale #auto-dispatch tier:standard priority:medium status:blocked blocked-by:t14 ref:GH#128 pr:#130 completed:2026-09-09
-- [ ] t17 Classify every nonzero Accuracy Trend change directionally #auto-dispatch tier:standard priority:medium status:available ref:GH#144
-- [ ] t18 Replace Classifier correlation with a match-finish trend #auto-dispatch tier:standard priority:medium status:available ref:GH#143
-- [ ] t19 Add field-relative rank context to Placement Over Time summaries #auto-dispatch tier:standard priority:medium status:available ref:GH#142
+- [x] t17 Classify every nonzero Accuracy Trend change directionally #auto-dispatch tier:standard priority:medium status:available ref:GH#144 pr:#145 completed:2026-09-11
+- [x] t18 Replace Classifier correlation with a match-finish trend #auto-dispatch tier:standard priority:medium status:available ref:GH#143 pr:#147 completed:2026-09-11
+- [x] t19 Add field-relative rank context to Placement Over Time summaries #auto-dispatch tier:standard priority:medium status:available ref:GH#142 pr:#146 completed:2026-09-11
 - [-] t20 Consolidate duplicate placement-rank request into GH#142 #no-auto-dispatch ref:GH#135 declined:2026-09-11
