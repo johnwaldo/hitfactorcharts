@@ -1814,7 +1814,7 @@ function renderAll() {
   }
 
   // ── Accuracy trend ────────────────────────────────────────────────────────
-  // Plots reported C, D, M, and NS shares of valid scored hits per match.
+  // Plots reported A, C, D, M, and NS shares of valid scored hits per match.
   // Combined M+NS values are deliberately not split into separate series.
   const accuracySection = document.getElementById('chartAccuracySection');
   const accuracyPoints  = [];
@@ -1868,7 +1868,7 @@ function renderAll() {
   if (accuracyPoints.length >= 2) {
     accuracySection.style.display = '';
     const accSeries = [
-      ['C', '#fdd835', 'c'], ['D', '#f97316', 'd'], ['M', '#ef4444', 'm'], ['NS', '#d946ef', 'ns'],
+      ['A', '#22c55e', 'a'], ['C', '#fdd835', 'c'], ['D', '#f97316', 'd'], ['M', '#ef4444', 'm'], ['NS', '#d946ef', 'ns'],
     ].map(([label, color, key]) => ({
       label,
       color,

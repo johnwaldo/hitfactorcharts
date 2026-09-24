@@ -22,6 +22,12 @@ test('Accuracy Trend selects its geometry-only custom scale', () => {
   assert.match(script, /chartAccuracy[\s\S]*?yTickValues: ACCURACY_TREND_TICKS/);
 });
 
+test('Accuracy Trend includes reported A-zone shares as a green series', () => {
+  const script = fs.readFileSync('extension/dashboard.js', 'utf8');
+  assert.match(script, /\['A', '#22c55e', 'a'\]/);
+  assert.match(script, /\['A', '#22c55e', 'a'\][\s\S]*?\['C', '#fdd835', 'c'\]/);
+});
+
 test('Hit Zone retains the six newest eligible records after filtering', () => {
   const records = Array.from({ length: 8 }, (_, index) => ({ date: `2026-01-0${index + 1}`, total: index === 1 ? 0 : 10 }));
   assert.deepEqual(latestEligible(records).map(record => record.date), [
