@@ -17,4 +17,3 @@ dist/
 *.p12
 *.pfx
 credentials.json
-.aidevops.json
