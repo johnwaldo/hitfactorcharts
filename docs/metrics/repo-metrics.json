@@ -1,0 +1,123 @@
+{
+  "schema": "aidevops.repo-metrics.v1",
+  "schema_version": 1,
+  "generated_at": "2026-10-01T15:52:21Z",
+  "tool": {
+    "name": "aidevops repo-metrics",
+    "version": "1.0.0"
+  },
+  "repo": {
+    "name": "hitfactorcharts",
+    "slug": "johnwaldo/hitfactorcharts"
+  },
+  "summary": {
+    "source_files": 37,
+    "code": 10677,
+    "comments": 437,
+    "blanks": 1535,
+    "languages": 8,
+    "dependencies": 5
+  },
+  "languages": [
+    {
+      "name": "JavaScript",
+      "files": 11,
+      "code": 6217,
+      "comments": 335,
+      "blanks": 726,
+      "percentage": 58.23,
+      "color": "#f1e05a"
+    },
+    {
+      "name": "HTML",
+      "files": 1,
+      "code": 1764,
+      "comments": 0,
+      "blanks": 74,
+      "percentage": 16.52,
+      "color": "#e34c26"
+    },
+    {
+      "name": "Markdown",
+      "files": 13,
+      "code": 1358,
+      "comments": 0,
+      "blanks": 518,
+      "percentage": 12.72,
+      "color": "#083fa1"
+    },
+    {
+      "name": "Python",
+      "files": 3,
+      "code": 1134,
+      "comments": 63,
+      "blanks": 185,
+      "percentage": 10.62,
+      "color": "#3572A5"
+    },
+    {
+      "name": "YAML",
+      "files": 4,
+      "code": 127,
+      "comments": 25,
+      "blanks": 23,
+      "percentage": 1.19,
+      "color": "#cb171e"
+    },
+    {
+      "name": "Shell",
+      "files": 2,
+      "code": 30,
+      "comments": 14,
+      "blanks": 9,
+      "percentage": 0.28,
+      "color": "#89e051"
+    },
+    {
+      "name": "JSON",
+      "files": 1,
+      "code": 27,
+      "comments": 0,
+      "blanks": 0,
+      "percentage": 0.25,
+      "color": "#292929"
+    },
+    {
+      "name": "SVG",
+      "files": 2,
+      "code": 20,
+      "comments": 0,
+      "blanks": 0,
+      "percentage": 0.19,
+      "color": "#6e7781"
+    }
+  ],
+  "dependencies": {
+    "direct": 5,
+    "locked": 0,
+    "total": 5,
+    "ecosystems": [
+      "python"
+    ],
+    "manifests": [
+      {
+        "path": "requirements.txt",
+        "ecosystem": "python",
+        "direct": 5,
+        "locked": 0,
+        "dependencies": [
+          "beautifulsoup4",
+          "pandas",
+          "playwright",
+          "plotly",
+          "streamlit"
+        ]
+      }
+    ]
+  },
+  "refresh": {
+    "default_policy": "weekly scheduled refresh plus manual runs; skip generated outputs younger than 24h in managed workflows",
+    "cost_profile": "fast local git/unignored-file scan; no network by default",
+    "top_languages": 6
+  }
+}
