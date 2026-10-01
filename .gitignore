@@ -6,6 +6,7 @@ dist/
 .agents/loop-state/
 
 # aidevops runtime artifacts
+.aidevops.json
 .agents/tmp/
 .agents/memory/
 .agents/commands
