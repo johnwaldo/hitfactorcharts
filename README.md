@@ -1,5 +1,21 @@
 # Hit Factor Charts
 
+<!-- aidevops:badges:start -->
+<!-- managed by aidevops badges; edit the template, not this block -->
+<!-- Build & Quality Status -->
+
+<!-- License & Legal -->
+[![License](https://img.shields.io/badge/license-see%20file-yellow.svg)](https://github.com/johnwaldo/hitfactorcharts/blob/main/LICENSE)
+
+<!-- Repository Metrics -->
+[![Lines of code](docs/metrics/badges/loc.svg)](docs/metrics/repo-metrics.md)
+[![Languages by lines of code](docs/metrics/badges/languages.svg)](docs/metrics/repo-metrics.md)
+[![Dependencies](docs/metrics/badges/dependencies.svg)](docs/metrics/repo-metrics.md)
+
+<!-- Project Links -->
+[![GitHub repository](https://img.shields.io/badge/github-repository-181717.svg?logo=github)](https://github.com/johnwaldo/hitfactorcharts)
+<!-- aidevops:badges:end -->
+
 A Chrome extension that pulls your USPSA match results from PractiScore and displays them as interactive charts — score over time, placement, classifier tracking, and per-stage breakdowns — all inside your browser, with no server or API key required.
 
 **[How to install](#installation)**
@@ -326,3 +342,18 @@ extension/          ← Load this folder in Chrome
     icon128.png
 build.sh            ← Packages extension/ into dist/HitFactorCharts.zip
 ```
+
+<!-- aidevops:managed-readme:start -->
+<!-- managed by aidevops; refresh with managed-readme-helper.sh sync -->
+## Star History
+
+![johnwaldo/hitfactorcharts stars over time](docs/assets/star-history.svg)
+
+## Built with aidevops
+
+This project was created and is maintained with
+[aidevops.sh](https://aidevops.sh).
+
+[View johnwaldo on GitHub](https://github.com/johnwaldo) ·
+[aidevops repository](https://github.com/marcusquinn/aidevops)
+<!-- aidevops:managed-readme:end -->
