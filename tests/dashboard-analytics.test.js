@@ -36,6 +36,36 @@ test('Hit Zone retains the six newest eligible records after filtering', () => {
   ]);
 });
 
+test('Hit Zone defaults off without aggregation or canvas drawing and can be restored', () => {
+  const script = fs.readFileSync('extension/dashboard.js', 'utf8');
+  const html = fs.readFileSync('extension/dashboard.html', 'utf8');
+  assert.match(html, /id="chartHitZoneSection" hidden style="display:none"/);
+  const activation = script.match(/const HIT_ZONE_BREAKDOWN_ENABLED = false;/)[0];
+  const flow = script.slice(script.indexOf('  // ── Hit zone breakdown'), script.indexOf('\nfunction setStatus')).trim().replace(/\n}$/, '');
+  for (const enabled of [false, true]) {
+    const section = { hidden: true, style: { display: 'none' } };
+    let aggregations = 0, draws = 0, analysis;
+    const records = Array.from({ length: 8 }, (_, index) => ({
+      date: `2026-01-0${index + 1}`, match_name: `Match ${index + 1}`, stages: [{ a: 8, c: 2 }],
+    }));
+    const context = vm.createContext({
+      viewSorted: records, nonClfPoints: [], accuracyPoints: [],
+      document: { getElementById: id => id === 'chartHitZoneSection' ? section : {} },
+      getMetricStages: record => { aggregations++; return record.stages; },
+      reportedStageHit: (stage, key) => stage[key] ?? null,
+      drawStackedBarChart: () => { draws++; },
+      generateSummaries: (_, value) => { analysis = value; },
+    });
+    vm.runInContext(`${enabled ? activation.replace('false', 'true') : activation}\n${flow}`, context);
+    assert.equal(aggregations, enabled ? 8 : 0);
+    assert.equal(draws, enabled ? 1 : 0);
+    assert.equal(section.hidden, !enabled);
+    assert.equal(section.style.display, enabled ? '' : 'none');
+    assert.equal(analysis.hitZoneBars.length, enabled ? 6 : 0);
+    if (enabled) assert.equal(analysis.hitZoneBars[0].aPct, 80);
+  }
+});
+
 test('dashboard exposes and synchronizes the required division affordance', () => {
   const html = fs.readFileSync('extension/dashboard.html', 'utf8');
   const script = fs.readFileSync('extension/dashboard.js', 'utf8');

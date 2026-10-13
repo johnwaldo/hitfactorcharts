@@ -75,7 +75,7 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
   the standard directional status. Prefer official `clf_pct`; label any
   match-relative fallback and never infer a class from it.
 - Accuracy share tiles compare the last three matches with the prior baseline.
-  Higher A is positive; lower B/C/D/M/NS is positive. Hit-zone tiles pair
+  Higher A is positive; lower B/C/D/M/NS is positive. Retained dormant hit-zone tiles pair
   average shares with least-squares percentage-point trends using the same
   semantic directions.
 - Accuracy Trend classifies every finite nonzero least-squares predicted change
@@ -119,12 +119,19 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
 - Place **Division performance**, **Adjusted %**, and **Time % (experimental)** beside **Classifiers Only** as matching native-checkbox switches. All controls expose visible keyboard focus, wrap together at narrow widths, and never create page-level overflow.
 - Division performance, Adjusted %, and Time % are independently selectable and shown together by default when each has at least two valid points. Omit an unavailable selected metric with a clear explanation; never substitute or fabricate points.
 - **Time % (experimental)** is a high-contrast cyan dashed series on the same linear 0–100 scale. It uses only fastest valid combined-field raw stage time divided by shooter raw time, excludes classifiers, overrides, invalid or incomplete times, and unavailable benchmarks. **Classifiers Only** is the sole exclusive alternate mode and restores the selected normal series when switched off.
-- Hit Zone Breakdown stores and exports raw reported counts only. Source-column availability is part of each refreshed stage record; legacy records without it are unknown, and combined M+NS data must never be split into invented M and NS values.
+- Accuracy Trend is the active accuracy visualization. Hit Zone Breakdown is
+  retained but disabled to reduce dashboard clutter; it has no user-facing toggle.
+  The single internal restoration point is `HIT_ZONE_BREAKDOWN_ENABLED` in
+  `extension/dashboard.js`. It gates aggregation, rendering, panel visibility,
+  and insights in `extension/dashboard-summaries.js`; the retained HTML starts
+  hidden, with no layout space or accessibility exposure. Keep the renderer in
+  `extension/dashboard-charts.js`, markup, aggregation, and insight code intact.
+- Raw reported hit counts remain stored and exported regardless of panel activation. Source-column availability is part of each refreshed stage record; legacy records without it are unknown, and combined M+NS data must never be split into invented M and NS values.
 - The hit-zone denominator is the reported A/B/C/D/M/NS or combined M+NS total. Procedural penalties remain outside it and are disclosed in chart help and tooltips.
 - Accuracy Trend uses that same valid reported hit-zone total as each match's percentage denominator; missing or zero-denominator matches are unavailable, never zero accuracy.
-- Apply all chart filters before sorting Hit Zone Breakdown records and retaining the six most recent eligible matches in chronological display order.
-- Hit-zone geometry transforms cumulative boundaries, never individual stored values: raw 0–75% maps linearly to 0–45% visual height, and raw 75–100% maps linearly to 45–100%. Raw ticks render at transformed positions, ordering is stable, and the cumulative endpoint remains 100%. Keep this as a stacked bar chart: pie charts, 3D transforms, perspective, and area-based encodings would distort comparison.
-- Use distinct theme-safe colours and stable order for A, conditional positive B, C, D, separate M, separate NS, and combined M+NS. Tooltips and exports retain exact raw counts and percentages.
+- Restoration guidance (not active display requirements): apply all chart filters before sorting Hit Zone Breakdown records and retaining the six most recent eligible matches in chronological display order.
+- Retained hit-zone geometry transforms cumulative boundaries, never individual stored values: raw 0–75% maps linearly to 0–45% visual height, and raw 75–100% maps linearly to 45–100%. Raw ticks render at transformed positions, ordering is stable, and the cumulative endpoint remains 100%. On restoration, keep this as a stacked bar chart: pie charts, 3D transforms, perspective, and area-based encodings would distort comparison.
+- On restoration, use distinct theme-safe colours and stable order for A, conditional positive B, C, D, separate M, separate NS, and combined M+NS. Tooltips and exports retain exact raw counts and percentages.
 
 ## Analytics date range
 

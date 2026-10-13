@@ -36,6 +36,28 @@ test('performance classes include every boundary and decimal value', () => {
   assert.equal(classify(95).code, 'GM');
 });
 
+test('summary flow shares the Hit Zone activation rule without suppressing Accuracy Trend', () => {
+  const dashboard = fs.readFileSync(path.join(__dirname, '..', 'extension', 'dashboard.js'), 'utf8');
+  const activation = dashboard.match(/const HIT_ZONE_BREAKDOWN_ENABLED = false;/)[0];
+  for (const enabled of [false, true]) {
+    const rendered = [], outcomes = [];
+    const isolated = vm.createContext({
+      document: { getElementById: () => null },
+      captureSummary: id => rendered.push(id),
+      captureOutcome: (_, mode) => { outcomes.push(mode); return []; },
+    });
+    vm.runInContext(`${enabled ? activation.replace('false', 'true') : activation}\n${source}
+      _renderSummary = captureSummary;
+      _outcomeTiles = captureOutcome;
+      _scoreTiles = _placementTiles = _nonClassifierTiles = _classifierTiles = () => [];
+      generateSummaries([], { accuracyPoints: [], hitZoneBars: [] });
+    `, isolated);
+    assert.ok(rendered.includes('chartAccuracySummary'));
+    assert.equal(rendered.includes('chartHitZoneSummary'), enabled);
+    assert.deepEqual(outcomes, enabled ? ['percentage', 'share'] : ['percentage']);
+  }
+});
+
 test('performance classes handle finite outliers and reject missing values', () => {
   const classify = context.performanceClassForTest;
   assert.equal(classify(-1).code, 'D');
