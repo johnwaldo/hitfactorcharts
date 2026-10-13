@@ -489,5 +489,8 @@ function generateSummaries(viewSorted, analysis = {}) {
   _renderSummary('chartNonClfSummary', _nonClassifierTiles(analysis.nonClfPoints || []));
   _renderSummary('chartClfSummary', _classifierTiles(sorted));
   _renderSummary('chartAccuracySummary', _outcomeTiles(analysis.accuracyPoints || [], 'percentage'));
-  _renderSummary('chartHitZoneSummary', _outcomeTiles(analysis.hitZoneBars || [], 'share'));
+  // Retain the insight implementation under the panel's single activation rule.
+  if (HIT_ZONE_BREAKDOWN_ENABLED) {
+    _renderSummary('chartHitZoneSummary', _outcomeTiles(analysis.hitZoneBars || [], 'share'));
+  }
 }
