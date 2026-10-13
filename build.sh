@@ -42,7 +42,8 @@ mkdir -p "$OUT"
 	--exclude "*.DS_Store" \
 	--exclude "__pycache__/*" \
 	--exclude "*.pyc" \
-	--exclude ".git/*")
+	--exclude ".git/*" \
+	--exclude "icons/icon-source.svg")
 
 echo "Built: $ZIP ($LABEL)"
 echo "Size:  $(du -sh "$ZIP" | cut -f1)"

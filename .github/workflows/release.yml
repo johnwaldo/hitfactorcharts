@@ -41,7 +41,12 @@ jobs:
           # Zip contents directly — no version in the folder name so users
           # can unzip over the same 'extension/' folder and just refresh.
           cd extension
-          zip -r ../HitFactorCharts.zip .
+          zip -r ../HitFactorCharts.zip . \
+            --exclude "*.DS_Store" \
+            --exclude "__pycache__/*" \
+            --exclude "*.pyc" \
+            --exclude ".git/*" \
+            --exclude "icons/icon-source.svg"
 
       - name: Create GitHub Release
         if: steps.check_tag.outputs.exists == 'false'

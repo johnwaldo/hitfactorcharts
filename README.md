@@ -310,7 +310,9 @@ A helper script is included to package the extension for distribution:
 ./build.sh
 ```
 
-This creates `dist/HitFactorCharts.zip` containing only the extension files, ready to share or submit to the Chrome Web Store.
+This creates `dist/hitfactorcharts-vX.Y.Z.zip`, using the version from `extension/manifest.json`, ready to share or submit to the Chrome Web Store. A version argument overrides the filename label (for example, `./build.sh 1.2.1`); a suffix argument appends to the manifest version (for example, `./build.sh alpha`).
+
+Both the local build and the CI release ZIP exclude macOS metadata (`*.DS_Store`), Python caches and bytecode (`__pycache__/*`, `*.pyc`), Git metadata (`.git/*`), and editable source artwork (`icons/icon-source.svg`). The source SVG stays in source control; runtime files, PNG icons, and fonts remain in the archives, with `manifest.json` at the archive root. The CI release download remains named `HitFactorCharts.zip`.
 
 ### Release checklist
 
@@ -340,7 +342,7 @@ extension/          ← Load this folder in Chrome
     icon16.png
     icon48.png
     icon128.png
-build.sh            ← Packages extension/ into dist/HitFactorCharts.zip
+build.sh            ← Packages extension/ into dist/hitfactorcharts-vX.Y.Z.zip
 ```
 
 <!-- aidevops:managed-readme:start -->
