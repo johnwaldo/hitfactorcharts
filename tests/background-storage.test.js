@@ -36,12 +36,13 @@ async function loadBackground(initialStorage = {}, chromeOverrides = {}) {
   const local = storageArea(initialStorage);
   const noopEvent = { addListener() {}, removeListener() {} };
   let actionCallback = null;
+  let messageCallback = null;
   const chrome = {
     action: { onClicked: { addListener(callback) { actionCallback = callback; } } },
     runtime: {
       getManifest: () => ({ version: 'test' }),
       getURL: value => value,
-      onMessage: noopEvent,
+      onMessage: { addListener(callback) { messageCallback = callback; } },
     },
     scripting: { executeScript: async () => [{ result: null }] },
     storage: { local, sync: storageArea() },
@@ -74,10 +75,11 @@ async function loadBackground(initialStorage = {}, chromeOverrides = {}) {
   });
   vm.runInContext(`${backgroundSource}\n;globalThis.__hfcTest = {
     storageMigrationPromise, resolveHistoryDiscovery, collectMatchHistory,
-    normalizeHistorySync, createBackup, importBackup, fetchScores, isReusableMatchCache
+    normalizeHistorySync, createBackup, importBackup, fetchScores, isReusableMatchCache,
+    refreshMatch, fetchMatchScore, normalizeRequestedDivision
   };`, context);
   await context.__hfcTest.storageMigrationPromise;
-  return { context, local, sync: chrome.storage.sync, api: context.__hfcTest, actionCallback };
+  return { context, local, sync: chrome.storage.sync, api: context.__hfcTest, actionCallback, messageCallback };
 }
 
 const firstId = '11111111-1111-4111-8111-111111111111';
@@ -273,7 +275,7 @@ test('bounded full reconciliation persists all discovered IDs and authoritativel
 
   const response = await api.fetchScores('A103', 'Test Shooter', {
     value: '6m', label: '6 mo', start: '2026-03-07', end: '2026-09-07',
-  }, { fullHistory: true });
+  }, { fullHistory: true, requestedDivision: 'co' });
   const persistedIds = local.data.lastMatchList.map(match => match.match_id);
 
   assert.deepEqual(persistedIds, [firstId, delayedId]);
@@ -304,7 +306,7 @@ test('incremental reconciliation persists an out-of-range unknown ID and preserv
 
   await api.fetchScores('A103', 'Test Shooter', {
     value: '6m', label: '6 mo', start: '2026-03-07', end: '2026-09-07',
-  });
+  }, { requestedDivision: 'co' });
   const persistedIds = local.data.lastMatchList.map(match => match.match_id);
 
   assert.deepEqual(persistedIds, [firstId, delayedId, secondId]);
@@ -511,4 +513,136 @@ test('failed restore write leaves the previous managed state unchanged', async (
 
   await assert.rejects(target.api.importBackup(backup), /simulated storage failure/);
   assert.deepEqual(target.local.data, before);
+});
+
+function installDivisionRuntime(context, matches, divisions) {
+  context.__matches = matches;
+  context.__divisions = divisions;
+  context.__calls = { lookups: [], definitions: [], stages: [] };
+  vm.runInContext(`
+    waitForTabLoad = async () => {}; sleep = async () => {};
+    collectMatchHistory = async (_tab, _push, discovery) => ({ matches: __matches, complete: true,
+      fullScanComplete: !discovery.sync, verifiedOverlap: Boolean(discovery.sync), pagesRead: 1, reason: 'settled history' });
+    collectResultsPages = async () => {
+      const id = globalThis.__currentMatch;
+      __calls.lookups.push(id);
+      return { _ready: true, _found: true, found_by: 'member', pageMatchType: 'USPSA',
+        competitorData: { division: __divisions[id], overall_pct: 80 },
+        resultLevelOptions: [], divisionOptions: [] };
+    };
+    fetchMatchDef = async id => { __calls.definitions.push(id); return {}; };
+    fetchStageData = async (_tab, id) => {
+      __calls.stages.push(id);
+      return { stages: [{ num: 1, name: 'Stage 1', time: 10, fastest_combined_time: 8,
+        is_classifier: false, top_hf_by_division: { CO: 5, PCC: 7 } }], expectedCount: 1,
+        fetchedCount: 1, failedStages: [], state: 'complete' };
+    };
+    fetchUSPSAClassification = async () => null;
+    chrome.tabs.update = async (_tab, { url }) => { globalThis.__currentMatch = url.split('/').pop(); };
+  `, context);
+}
+
+test('division aliases are exact and invalid requests fail before opening tabs', async () => {
+  const { api } = await loadBackground({}, { tabs: { create: async () => assert.fail('invalid request opened a tab') } });
+  for (const alias of ['CO', 'Carry Optics', 'co', 'carry-optics']) assert.equal(api.normalizeRequestedDivision(alias), 'co');
+  for (const alias of [null, {}, 'Combined', 'not Carry Optics']) assert.equal(api.normalizeRequestedDivision(alias), null);
+  await assert.rejects(api.fetchScores('A103', '', 'all'), /valid USPSA division/);
+  await assert.rejects(api.refreshMatch({ match_id: firstId }, 'A103', '', 'Combined'), /valid USPSA division/);
+});
+
+test('fresh mixed history stops PCC and unknown divisions before definitions and stages', async () => {
+  const { context, local, api, messageCallback } = await loadBackground();
+  const matches = [firstId, secondId, thirdId].map(match_id => ({ match_id, match_name: 'USPSA Match', date: '2026-09-01' }));
+  installDivisionRuntime(context, matches, { [firstId]: 'Carry Optics', [secondId]: 'PCC', [thirdId]: '' });
+  const message = await new Promise(resolve => messageCallback({ action: 'fetchScores', memberNumber: 'A103',
+    name: '', fetchTimeline: { value: 'all' }, requestedDivision: 'CO' }, {}, resolve));
+  assert.equal(message.ok, true);
+  const response = message.data;
+  assert.deepEqual([...context.__calls.definitions], [firstId]);
+  assert.deepEqual([...context.__calls.stages], [firstId]);
+  assert.deepEqual([...response.results].filter(r => r.overall_pct != null).map(r => r.match_id), [firstId]);
+  assert.equal(response.fetchDiagnostics.divisionMismatchSkipped, 1);
+  assert.equal(response.fetchDiagnostics.divisionUnresolvedSkipped, 1);
+  assert.equal(response.fetchDiagnostics.failedStages, 0);
+  assert.equal(local.data.matchCache[secondId], undefined);
+  assert.equal(local.data.matchCache[firstId].stages[0].top_hf_by_division.PCC, 7);
+
+  // Retained IDs remain eligible even when incremental discovery does not return them again.
+  context.__matches = [matches[0]];
+  context.__calls.lookups.length = 0;
+  context.__calls.stages.length = 0;
+  const pcc = await api.fetchScores('A103', '', 'all', { requestedDivision: 'pcc' });
+  assert.deepEqual([...context.__calls.stages], [secondId]);
+  assert.ok(!context.__calls.lookups.includes(firstId));
+  assert.deepEqual([...pcc.results].filter(r => r.overall_pct != null).map(r => r.match_id), [secondId]);
+  assert.equal(local.data.matchCache[firstId].division, 'Carry Optics');
+});
+
+test('mixed complete, partial and legacy caches never leak other-division stages', async () => {
+  const matches = [firstId, secondId, thirdId, delayedId].map(match_id => ({ match_id, match_name: 'USPSA Match', date: '2026-09-01' }));
+  const { context, local, api } = await loadBackground({ lastMatchList: matches, matchCache: {
+    [firstId]: { ...completeCache(3), division: 'CO', overall_pct: 80 },
+    [secondId]: { ...completeCache(3), division: 'PCC', overall_pct: 90 },
+    [thirdId]: { ...completeCache(3), division: 'PCC', overall_pct: 90,
+      cache_completeness: { ...completeCache(3).cache_completeness, state: 'partial' } },
+    [delayedId]: { ...completeCache(3), overall_pct: 95 },
+  } });
+  const preserved = structuredClone(local.data.matchCache);
+  installDivisionRuntime(context, matches, { [delayedId]: 'PCC' });
+  const response = await api.fetchScores('A103', '', 'all', { requestedDivision: 'co' });
+  assert.deepEqual([...context.__calls.lookups], [delayedId]);
+  assert.deepEqual([...context.__calls.stages], []);
+  for (const result of response.results.filter(r => r.match_id !== firstId)) {
+    assert.equal(result.overall_pct, null);
+    assert.equal(result.stages, null);
+  }
+  assert.deepEqual(local.data.matchCache, preserved);
+  assert.equal(response.fetchDiagnostics.completeCacheReused, 1);
+});
+
+test('refresh skips known mismatches without opening a tab and preserves cached data', async () => {
+  const { local, api } = await loadBackground({ matchCache: {
+    [firstId]: { ...completeCache(3), division: 'PCC', overall_pct: 90 },
+  } }, { tabs: { create: async () => assert.fail('known mismatch opened a tab') } });
+  const preserved = structuredClone(local.data.matchCache);
+  const { result } = await api.refreshMatch({ match_id: firstId }, 'A103', '', 'co');
+  assert.equal(result._divisionSkipped, 'mismatch');
+  assert.equal(result.overall_pct, null);
+  assert.equal(result.stages, null);
+  assert.deepEqual(local.data.matchCache, preserved);
+});
+
+test('refresh discovers mismatched or unknown division without stage repair, and includes aliases', async () => {
+  const { context, api } = await loadBackground();
+  installDivisionRuntime(context, [], { [firstId]: 'PCC', [secondId]: '', [thirdId]: 'CO' });
+  for (const id of [firstId, secondId]) {
+    const { result } = await api.refreshMatch({ match_id: id }, 'A103', '', 'co');
+    assert.ok(result._divisionSkipped);
+    assert.equal(result.stages, null);
+  }
+  const included = await api.refreshMatch({ match_id: thirdId }, 'A103', '', 'Carry Optics');
+  assert.equal(included.result.overall_pct, 80);
+  assert.deepEqual([...context.__calls.definitions], [thirdId]);
+  assert.deepEqual([...context.__calls.stages], [thirdId]);
+});
+
+test('included partial repair preserves stages but never trusts another owner or unknown legacy division', async () => {
+  const matches = [firstId, secondId, thirdId].map(match_id => ({ match_id, match_name: 'USPSA Match', date: '2026-09-01' }));
+  const { context, local, api } = await loadBackground({ matchCache: {
+    [firstId]: { ...completeCache(3), division: 'CO', overall_pct: 80,
+      cache_completeness: { ...completeCache(3).cache_completeness, state: 'partial' } },
+    [secondId]: { ...completeCache(3), division: 'PCC', cached_for: 'B999', overall_pct: 90 },
+    [thirdId]: { ...completeCache(3), overall_pct: 95 },
+  } });
+  installDivisionRuntime(context, matches, { [firstId]: 'CO', [secondId]: 'CO', [thirdId]: 'CO' });
+  vm.runInContext(`fetchStageData = async (_tab, id) => {
+    __calls.stages.push(id);
+    return { stages: [], expectedCount: 1, fetchedCount: 0, failedStages: [1], state: 'partial' };
+  };`, context);
+  const response = await api.fetchScores('A103', '', { value: 'all' }, { requestedDivision: 'co' });
+  assert.deepEqual([...context.__calls.stages], [firstId, secondId, thirdId]);
+  assert.equal(response.results.find(r => r.match_id === firstId).stages.length, 1);
+  assert.equal(response.results.find(r => r.match_id === secondId).stages.length, 0);
+  assert.equal(response.results.find(r => r.match_id === thirdId).stages.length, 0);
+  assert.equal(local.data.matchCache[secondId].cached_for, 'A103');
 });
