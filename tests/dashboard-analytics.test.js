@@ -8,8 +8,10 @@ function hitShares(hits) {
   return total ? Object.fromEntries(Object.entries(hits).map(([key, value]) => [key, value / total * 100])) : null;
 }
 
-function latestEligible(records) {
-  return records.filter(record => record.total > 0).sort((a, b) => a.date.localeCompare(b.date)).slice(-6);
+function loadHitZoneHelper(context) {
+  const charts = fs.readFileSync('extension/dashboard-charts.js', 'utf8');
+  const helper = charts.slice(charts.indexOf('function buildRecentHitZoneBars('), charts.indexOf('\n// Raw shares are stored'));
+  vm.runInContext(helper, context);
 }
 
 test('accuracy shares use valid reported-hit denominators and reject zero totals', () => {
@@ -30,10 +32,43 @@ test('Accuracy Trend includes reported A-zone shares as a green series', () => {
 });
 
 test('Hit Zone retains the six newest eligible records after filtering', () => {
-  const records = Array.from({ length: 8 }, (_, index) => ({ date: `2026-01-0${index + 1}`, total: index === 1 ? 0 : 10 }));
-  assert.deepEqual(latestEligible(records).map(record => record.date), [
+  const context = vm.createContext({
+    getMetricStages: record => record.stages.filter(stage => !stage.excluded),
+    reportedStageHit: (stage, key) => stage[key] ?? null,
+  });
+  loadHitZoneHelper(context);
+  const records = Array.from({ length: 8 }, (_, index) => ({
+    date: `2026-01-0${index + 1}`, match_name: `Match ${index + 1}`,
+    stages: [{ a: index === 1 ? 0 : 8, c: index === 1 ? 0 : 2 }],
+  }));
+  records[7].stages = [
+    { a: 8, m: 1, ns: 0, m_ns: 99, p: 7 },
+    { c: 2, m_ns: 1, p: 3 },
+    { a: 100, excluded: true },
+  ];
+  records.push(
+    { date: '2026-01-09', stages: [] },
+    { date: '2026-01-10', stages: [{ p: 20 }] },
+    { date: '2026-01-11', stages: [{}] },
+    { date: '2026-01-12', stages: [{ a: 100, excluded: true }] },
+  );
+  const bars = context.buildRecentHitZoneBars(records.reverse());
+  assert.deepEqual(Array.from(bars, record => record.date), [
     '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08',
   ]);
+  const latest = bars[5];
+  assert.equal(latest.label, 'Match 8');
+  assert.equal(latest.total, 12);
+  assert.equal(latest.a, 8);
+  assert.equal(latest.aPct, 8 / 12 * 100);
+  assert.equal(latest.cPct, 2 / 12 * 100);
+  assert.equal(latest.mPct, 1 / 12 * 100);
+  assert.equal(latest.nsPct, 0);
+  assert.equal(latest.m_ns, 1);
+  assert.equal(latest.m_nsPct, 1 / 12 * 100);
+  assert.equal(latest.bPct, null);
+  assert.equal(latest.dPct, null);
+  assert.equal(latest.procedurals, 10);
 });
 
 test('Hit Zone defaults off without aggregation or canvas drawing and can be restored', () => {
@@ -56,13 +91,19 @@ test('Hit Zone defaults off without aggregation or canvas drawing and can be res
       drawStackedBarChart: () => { draws++; },
       generateSummaries: (_, value) => { analysis = value; },
     });
+    loadHitZoneHelper(context);
     vm.runInContext(`${enabled ? activation.replace('false', 'true') : activation}\n${flow}`, context);
     assert.equal(aggregations, enabled ? 8 : 0);
     assert.equal(draws, enabled ? 1 : 0);
     assert.equal(section.hidden, !enabled);
     assert.equal(section.style.display, enabled ? '' : 'none');
     assert.equal(analysis.hitZoneBars.length, enabled ? 6 : 0);
-    if (enabled) assert.equal(analysis.hitZoneBars[0].aPct, 80);
+    if (enabled) {
+      assert.equal(analysis.hitZoneBars[0].aPct, 80);
+      assert.deepEqual(Array.from(analysis.hitZoneBars, bar => bar.date), [
+        '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08',
+      ]);
+    }
   }
 });
 

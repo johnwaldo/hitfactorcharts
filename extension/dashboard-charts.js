@@ -567,6 +567,54 @@ function drawMessage(canvas, msg) {
 }
 
 // ── Stacked bar chart — hit zone breakdown ────────────────────────────────────
+// Called only on restoration, after dashboard filters select the input records.
+function buildRecentHitZoneBars(records) {
+  const hitZoneBars = [];
+  for (const r of records) {
+    if (!r.stages?.length) continue;
+    const totals = { a: 0, b: 0, c: 0, d: 0, m: 0, ns: 0, m_ns: 0, p: 0 };
+    const available = { a: false, b: false, c: false, d: false, m: false, ns: false, m_ns: false, p: false };
+    for (const s of getMetricStages(r)) {
+      for (const key of ['a', 'b', 'c', 'd', 'p']) {
+        const value = reportedStageHit(s, key);
+        if (value == null) continue;
+        available[key] = true;
+        totals[key] += value;
+      }
+
+      const stageM = reportedStageHit(s, 'm');
+      const stageNS = reportedStageHit(s, 'ns');
+      if (stageM != null || stageNS != null) {
+        if (stageM != null) { available.m = true; totals.m += stageM; }
+        if (stageNS != null) { available.ns = true; totals.ns += stageNS; }
+      } else {
+        const stageCombined = reportedStageHit(s, 'm_ns');
+        if (stageCombined != null) {
+          available.m_ns = true;
+          totals.m_ns += stageCombined;
+        }
+      }
+    }
+
+    const zoneKeys = ['a', 'b', 'c', 'd', 'm', 'ns', 'm_ns'];
+    if (!zoneKeys.some(key => available[key])) continue;
+    const total = zoneKeys.reduce((sum, key) => sum + totals[key], 0);
+    if (!total) continue;
+    const values = Object.fromEntries(zoneKeys.map(key => [key, available[key] ? totals[key] : null]));
+    const percentages = Object.fromEntries(zoneKeys.map(key => [key + 'Pct', available[key] ? (totals[key] / total) * 100 : null]));
+    hitZoneBars.push({
+      date: r.date,
+      label: r.match_name,
+      ...values,
+      ...percentages,
+      total,
+      procedurals: available.p ? totals.p : null,
+    });
+  }
+  hitZoneBars.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  return hitZoneBars.slice(-6);
+}
+
 // Raw shares are stored on each bar. Only cumulative display boundaries are
 // transformed: 0–75% raw maps to 0–45% visual; 75–100% maps to 45–100%.
 function hitZoneVisualPct(rawPct) {
