@@ -4,6 +4,23 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.9.1 — 2026-10-13
+
+### Fixed
+
+- Fetch Scores now honors the selected division during match ingestion, including
+  cache reuse and refresh decisions. Matches from other divisions remain stored
+  without being fetched or overwritten as the selected division; changing the
+  division during a fetch does not change that fetch's scope.
+- Restored the dashboard size safeguard by extracting the retained hit-zone
+  aggregation into the existing chart module without changing its calculations.
+
+### Changed
+
+- Hid Hit Zone Breakdown and its insights to reduce dashboard clutter while
+  keeping Accuracy Trend active. The chart implementation and raw hit data are
+  retained for future reconsideration; backups and exports remain available.
+
 ## v1.9.0 — 2026-10-13
 
 ### Added
