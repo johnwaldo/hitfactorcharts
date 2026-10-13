@@ -992,6 +992,7 @@ async function fetchScoresFromDashboard({ fullHistory = false } = {}) {
   const memberNumber = memberInput.value.trim().toUpperCase();
   const name         = nameInput.value.trim();
   selectedDiv = normalizeDivision(divisionFilter.value);
+  const requestedDivision = selectedDiv;
   syncDivisionRequirement();
   selectedFetchTimeline = normalizeFetchTimeline(fetchTimelineSelect.value);
   const fetchTimeline = resolveFetchTimeline(selectedFetchTimeline);
@@ -1045,7 +1046,7 @@ async function fetchScoresFromDashboard({ fullHistory = false } = {}) {
 
   try {
     const response = await chrome.runtime.sendMessage({
-      action: 'fetchScores', memberNumber, name, fetchTimeline, fullHistory,
+      action: 'fetchScores', memberNumber, name, fetchTimeline, fullHistory, requestedDivision,
     });
     if (!response.ok) throw new Error(response.error || 'Unknown error');
     if (response.data._not_logged_in_ps) {
