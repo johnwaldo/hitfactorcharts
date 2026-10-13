@@ -44,7 +44,7 @@ async function loadBackground(initialStorage = {}, chromeOverrides = {}) {
       onMessage: noopEvent,
     },
     scripting: { executeScript: async () => [{ result: null }] },
-    storage: { local },
+    storage: { local, sync: storageArea() },
     tabs: {
       create: async () => ({ id: 1 }),
       get: async () => ({ url: 'https://practiscore.com/associate/step2' }),
@@ -77,7 +77,7 @@ async function loadBackground(initialStorage = {}, chromeOverrides = {}) {
     normalizeHistorySync, createBackup, importBackup, fetchScores, isReusableMatchCache
   };`, context);
   await context.__hfcTest.storageMigrationPromise;
-  return { context, local, api: context.__hfcTest, actionCallback };
+  return { context, local, sync: chrome.storage.sync, api: context.__hfcTest, actionCallback };
 }
 
 const firstId = '11111111-1111-4111-8111-111111111111';
@@ -332,6 +332,88 @@ test('backup round trip validates ownership and restores all managed history key
 
   backup.data.matchCache[firstId].cached_for = 'B999';
   await assert.rejects(target.api.importBackup(backup), /ownership/);
+});
+
+test('all supported modes and accents round trip over conflicting local and sync preferences', async () => {
+  for (const mode of ['system', 'light', 'dark']) {
+    for (const accent of ['blue', 'dark-green', 'bright-green', 'purple']) {
+      const values = { theme: mode, themeMode: mode, accent };
+      const source = await loadBackground(values);
+      const backup = await source.api.createBackup();
+      const target = await loadBackground({ theme: 'light', themeMode: 'dark', accent: 'purple' });
+      await target.sync.set({ theme: 'dark', themeMode: 'light', accent: 'bright-green', unrelated: true });
+      await target.api.importBackup(backup);
+      for (const [key, value] of Object.entries(values)) {
+        assert.equal(backup.data[key], value);
+        assert.equal(target.local.data[key], value);
+        assert.equal(target.sync.data[key], value);
+      }
+      assert.equal(target.sync.data.unrelated, true);
+    }
+  }
+});
+
+test('legacy theme and mode-only backups normalize both aliases and preserve an omitted accent', async () => {
+  for (const field of ['theme', 'themeMode']) {
+    for (const mode of ['light', 'dark']) {
+      const source = await loadBackground({ [field]: mode });
+      const target = await loadBackground({ themeMode: 'system', accent: 'purple' });
+      await target.sync.set({ themeMode: 'system', accent: 'purple' });
+      await target.api.importBackup(await source.api.createBackup());
+      for (const area of [target.local, target.sync]) {
+        assert.equal(area.data.theme, mode);
+        assert.equal(area.data.themeMode, mode);
+        assert.equal(area.data.accent, 'purple');
+      }
+    }
+  }
+});
+
+test('mode takes precedence over legacy alias while accent-only and appearance-free backups preserve omitted preferences', async () => {
+  const target = await loadBackground({ theme: 'dark', themeMode: 'dark', accent: 'purple' });
+  await target.sync.set({ theme: 'dark', themeMode: 'dark', accent: 'purple' });
+  for (const values of [{}, { accent: 'blue' }, { theme: 'light', themeMode: 'system' }]) {
+    const source = await loadBackground(values);
+    await target.api.importBackup(await source.api.createBackup());
+    for (const area of [target.local, target.sync]) {
+      assert.equal(area.data.theme, values.themeMode || 'dark');
+      assert.equal(area.data.themeMode, values.themeMode || 'dark');
+      assert.equal(area.data.accent, Object.keys(values).length ? 'blue' : 'purple');
+    }
+  }
+});
+
+test('invalid appearance rejects before changing match data or either storage area', async () => {
+  const source = await loadBackground({ memberNumber: 'A103', matchCache: { [firstId]: completeCache(3) } });
+  const target = await loadBackground({ memberNumber: 'A103', themeMode: 'dark' });
+  const before = structuredClone(target.local.data);
+  for (const key of ['theme', 'themeMode', 'accent']) {
+    for (const value of ['invalid', null, 42, {}]) {
+      const backup = await source.api.createBackup();
+      backup.data[key] = value;
+      await assert.rejects(target.api.importBackup(backup), /preference is invalid/);
+      assert.deepEqual(target.local.data, before);
+      assert.deepEqual(target.sync.data, {});
+    }
+  }
+});
+
+test('failed sync restore rolls back history and exact appearance key presence in both stores', async () => {
+  const source = await loadBackground({ themeMode: 'system', accent: 'blue' });
+  const target = await loadBackground({ theme: 'light', accent: 'purple', deselectedMatches: [secondId] });
+  await target.sync.set({ theme: 'dark', unrelated: true });
+  const before = structuredClone(target.local.data);
+  const beforeSync = structuredClone(target.sync.data);
+  // Model a partially applied write as well as a rejection before any mutation.
+  const originalSet = target.sync.set;
+  let fail = true;
+  target.sync.set = async function(values) {
+    await originalSet.call(this, values);
+    if (fail) { fail = false; throw new Error('simulated sync failure'); }
+  };
+  await assert.rejects(target.api.importBackup(await source.api.createBackup()), /simulated sync failure/);
+  assert.deepEqual(target.local.data, before);
+  assert.deepEqual(target.sync.data, beforeSync);
 });
 
 test('restore rejects malformed nested cache data before changing storage', async () => {

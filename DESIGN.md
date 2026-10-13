@@ -46,6 +46,10 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
   Light, and Dark; System follows the operating-system preference. Accent
   presets are Blue (compatibility default), Dark green, Bright green, and
   Purple. Persist both compact preferences in sync storage with a local backup.
+- Versioned backups include brightness mode and accent. Restore explicitly supplied
+  appearance preferences to both local and sync storage before reloading; legacy
+  theme-only backups replace both brightness aliases. Missing appearance fields
+  preserve current preferences, and failed restores roll back both storage areas.
 - Use shared CSS custom properties for accent, stronger accent, focus ring, and
   accent surface. Selected settings require text and native radio state, never
   color alone. Every preset must preserve contrast for text, controls, badges,
