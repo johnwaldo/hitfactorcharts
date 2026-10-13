@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const test = require('node:test');
+const vm = require('node:vm');
 
 function hitShares(hits) {
   const total = Object.values(hits).reduce((sum, value) => sum + value, 0);
@@ -49,4 +50,34 @@ test('dashboard exposes and synchronizes the required division affordance', () =
   assert.match(script, /function syncDivisionRequirement\(\)/);
   assert.match(script, /divisionControl\.classList\.toggle\('is-required', required\)/);
   assert.match(script, /syncDivisionRequirement\(\);/);
+});
+
+test('fetch snapshots division before asynchronous storage work and sends it explicitly', () => {
+  const script = fs.readFileSync('extension/dashboard.js', 'utf8');
+  const fetch = script.slice(script.indexOf('async function fetchScoresFromDashboard('));
+  assert.ok(fetch.indexOf('const requestedDivision = selectedDiv;') < fetch.indexOf('await chrome.storage.local.get'));
+  assert.match(fetch, /action: 'fetchScores', memberNumber, name, fetchTimeline, fullHistory, requestedDivision/);
+});
+
+test('single-match refresh sends a division snapshot and replaces intentionally skipped scores', async () => {
+  const script = fs.readFileSync('extension/dashboard-history.js', 'utf8');
+  const refresh = script.slice(script.indexOf('async function refreshSingleMatch('));
+  const skipped = { match_id: 'pcc-match', overall_pct: null, stages: null, _divisionSkipped: 'mismatch' };
+  let request;
+  const context = vm.createContext({
+    selectedDiv: 'co', normalizeDivision: value => value,
+    memberInput: { value: 'a103' }, nameInput: { value: 'Shooter' },
+    allResults: [{ match_id: 'pcc-match', division: 'PCC', overall_pct: 90, stages: [{ a: 100 }], hf: 10 }],
+    chrome: { runtime: { sendMessage: async message => {
+      request = message;
+      context.selectedDiv = 'pcc';
+      return { ok: true, data: { result: skipped } };
+    } } },
+    renderAll() {}, renderMatchList() {}, updateStatusCounts() {}, console,
+  });
+  vm.runInContext(refresh, context);
+  await context.refreshSingleMatch({ match_id: 'pcc-match' }, { classList: { add() {}, remove() {} } });
+  assert.equal(request.requestedDivision, 'co');
+  assert.deepEqual(context.allResults[0], skipped);
+  assert.equal(context.allResults[0].hf, undefined);
 });

@@ -71,7 +71,7 @@ chrome.action.onClicked.addListener(async () => {
 // ── Message handler ───────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.action === 'fetchScores') {
-    fetchScores(msg.memberNumber, msg.name, msg.fetchTimeline, { fullHistory: msg.fullHistory === true })
+    fetchScores(msg.memberNumber, msg.name, msg.fetchTimeline, { fullHistory: msg.fullHistory === true, requestedDivision: msg.requestedDivision })
       .then(data  => sendResponse({ ok: true,  data }))
       .catch(err  => sendResponse({ ok: false, error: err.message }));
     return true;
@@ -89,7 +89,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg.action === 'refreshMatch') {
-    refreshMatch(msg.match, msg.memberNumber, msg.name)
+    refreshMatch(msg.match, msg.memberNumber, msg.name, msg.requestedDivision)
       .then(data  => sendResponse({ ok: true,  data }))
       .catch(err  => sendResponse({ ok: false, error: err.message }));
     return true;
@@ -658,6 +658,29 @@ function isLikelyUSPSA(matchType) {
 
 // Map the Div abbreviation shown in the results table to the PractiScore URL key.
 // e.g. "CO" → "carryoptics", "L" → "limited"
+function normalizeRequestedDivision(division) {
+  const aliases = {
+    CO: 'co', CARRYOPTICS: 'co', L: 'ltd', LTD: 'ltd', LIMITED: 'ltd',
+    LO: 'lo', LIMITEDOPTICS: 'lo', O: 'opn', OPN: 'opn', OPEN: 'opn',
+    PCC: 'pcc', PISTOLCALIBERCARBINE: 'pcc', REV: 'rev', REVOLVER: 'rev',
+    SS: 'ss', SINGLESTACK: 'ss', P: 'prod', PROD: 'prod', PRODUCTION: 'prod',
+    L10: 'l10', LIMITED10: 'l10',
+  };
+  const key = typeof division === 'string' ? division.trim().toUpperCase().replace(/[\s\-]+/g, '') : '';
+  return aliases[key] || null;
+}
+
+function requireRequestedDivision(division) {
+  const normalized = normalizeRequestedDivision(division);
+  if (!normalized) throw new Error('Select a valid USPSA division before fetching scores.');
+  return normalized;
+}
+
+function divisionSkip(division, requestedDivision) {
+  const recorded = normalizeRequestedDivision(division);
+  return recorded === requestedDivision ? null : (recorded ? 'mismatch' : 'unresolved');
+}
+
 function divisionToUrlKey(div) {
   const map = {
     CO:  'carryoptics',
@@ -1620,7 +1643,8 @@ async function fetchUSPSAClassification(memberNumber, push) {
 }
 
 // ── Fetch all match scores ────────────────────────────────────────────────────
-async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory = false } = {}) {
+async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory = false, requestedDivision } = {}) {
+  requestedDivision = requireRequestedDivision(requestedDivision);
   const log = [];
   const push = m => { log.push(m); console.log('[HFC]', m); };
   let tabId = null;
@@ -1632,7 +1656,7 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
       push(`Preserved ${migration.cacheEntriesMigrated} compatible cache record(s) during storage migration ${migration.from} → ${migration.to}.`);
     }
     const bounds = fetchScope.value === 'all' ? '' : ` (${fetchScope.start} through ${fetchScope.end})`;
-    push(`Loading match history — fetch timeline: ${fetchScope.label}${bounds}…`);
+    push(`Loading match history — requested division: ${requestedDivision}; fetch timeline: ${fetchScope.label}${bounds}…`);
     const tab = await chrome.tabs.create({ url: `${PS_BASE}/associate/step2`, active: false });
     tabId = tab.id;
     await waitForTabLoad(tabId);
@@ -1695,8 +1719,9 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
       ...(fetchCoverage ? { fetchCoverage } : {}),
       ...(matchHistorySync ? { matchHistorySync } : {}),
     });
-    const mergedById = new Map(mergedMatchList.map(match => [match.match_id, match]));
-    const workMatches = matchList.map(match => mergedById.get(match.match_id) || match);
+    // Discovery overlap and timeline coverage describe history, not division detail coverage.
+    // Revisit retained in-range IDs when a different division is requested.
+    const workMatches = filterMatchListByTimeline(mergedMatchList, fetchScope).matches;
 
     if (rawMatchList.length === 0) {
       push('No matches extracted — preserving previously cached history.');
@@ -1720,10 +1745,15 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
 
     const cachedMatches = [];
     const uncachedMatches = [];
+    const divisionSkips = { mismatch: 0, unresolved: 0 };
     const repairCounts = { partial: 0, unknown: 0, owner: 0, new: 0 };
     for (const match of uspsaMatches) {
       const cached = cache[match.match_id];
-      if (isReusableMatchCache(cached, memberNumber)) cachedMatches.push(match);
+      if (isSameOwnerCache(cached, memberNumber) && normalizeRequestedDivision(cached.division) && divisionSkip(cached.division, requestedDivision)) {
+        divisionSkips.mismatch++;
+        continue;
+      }
+      if (isReusableMatchCache(cached, memberNumber) && !divisionSkip(cached.division, requestedDivision)) cachedMatches.push(match);
       else {
         const reason = cacheRepairReason(cached, memberNumber);
         repairCounts[reason]++;
@@ -1749,10 +1779,16 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
       const match = uncachedMatches[i];
       push(`  → [${i + 1}/${uncachedMatches.length}] ${match.match_name} (${match.date})`);
 
-      const score  = await fetchMatchScore(tabId, match.match_id, memberNumber, name, push);
+      const score  = await fetchMatchScore(tabId, match.match_id, memberNumber, name, push, requestedDivision);
 
       // Override match type with the confirmed value read from the results page
       if (score._pageMatchType) match.match_type = score._pageMatchType;
+      const skip = score._divisionSkipped || divisionSkip(score.division, requestedDivision);
+      if (skip) {
+        divisionSkips[skip]++;
+        results.push({ ...buildResult(match, {}, memberNumber), _divisionSkipped: skip });
+        continue;
+      }
 
       const classifierMap = score.overall_pct != null
         ? await fetchMatchDef(match.match_id, push)
@@ -1760,7 +1796,7 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
       const stageRepair = score.overall_pct != null
         ? await fetchStageData(tabId, match.match_id, memberNumber, name, score._divKey, score._stageOptions, push, classifierMap, score._divisionOptions)
         : { stages: [], expectedCount: null, fetchedCount: 0, failedStages: [], state: 'unknown' };
-      const previous = isSameOwnerCache(cache[match.match_id], memberNumber) ? cache[match.match_id] : null;
+      const previous = isSameOwnerCache(cache[match.match_id], memberNumber) && !divisionSkip(cache[match.match_id].division, requestedDivision) ? cache[match.match_id] : null;
       const stages = mergeStageRepair(previous?.stages, stageRepair);
       const completeness = {
         schema_version: CACHE_SCHEMA_VERSION,
@@ -1793,6 +1829,7 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
     const n = results.filter(r => r.overall_pct != null).length;
     const newlyScoredCount = results.filter(r => r._cached === false && r.overall_pct != null).length;
     push(`Stage accounting: ${expectedStageCount} expected; ${fetchedStageCount} fetched; ${failedStageCount} failed.`);
+    push(`Division ${requestedDivision}: ${divisionSkips.mismatch} mismatch skip(s); ${divisionSkips.unresolved} unresolved division skip(s).`);
     push(`Done — ${n}/${uspsaMatches.length} matches with scores; ${cachedMatches.length} complete caches reused, ${uncachedMatches.length} detail requests.`);
 
     // Refresh USPSA classification only when this run fetched at least one new score.
@@ -1812,13 +1849,16 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
     const combinedResults = mergedMatchList.map(match => {
       if (fetchedById.has(match.match_id)) return fetchedById.get(match.match_id);
       const cached = cache[match.match_id];
-      if (isSameOwnerCache(cached, memberNumber)) {
+      if (isSameOwnerCache(cached, memberNumber) && !divisionSkip(cached.division, requestedDivision)) {
         return { ...match, ...cached, _cached: true };
       }
       return buildResult(match, {}, memberNumber);
     });
 
     const fetchDiagnostics = {
+      requestedDivision,
+      divisionMismatchSkipped: divisionSkips.mismatch,
+      divisionUnresolvedSkipped: divisionSkips.unresolved,
       extractedMatches: rawMatchList.length,
       inRangeMatches: matchList.length,
       completeCacheReused: cachedMatches.length,
@@ -1844,13 +1884,21 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
 }
 
 // ── Refresh a single match ────────────────────────────────────────────────────
-async function refreshMatch(match, memberNumber, name) {
+async function refreshMatch(match, memberNumber, name, requestedDivision) {
+  requestedDivision = requireRequestedDivision(requestedDivision);
   const log = [];
   const push = m => { log.push(m); console.log('[HFC]', m); };
   let tabId = null;
 
   try {
-    push(`Refreshing ${match.match_name}…`);
+    push(`Refreshing ${match.match_name} — requested division: ${requestedDivision}…`);
+    const cache = await getCache();
+    const owned = isSameOwnerCache(cache[match.match_id], memberNumber) ? cache[match.match_id] : null;
+    const knownSkip = owned && normalizeRequestedDivision(owned.division) && divisionSkip(owned.division, requestedDivision);
+    if (knownSkip) {
+      push(`Division ${requestedDivision}: 1 mismatch skip; no detail requests.`);
+      return { result: { ...buildResult(match, {}, memberNumber), _divisionSkipped: knownSkip }, log };
+    }
     const tab = await chrome.tabs.create({
       url: `${PS_BASE}/results/new/${match.match_id}`,
       active: false,
@@ -1858,16 +1906,20 @@ async function refreshMatch(match, memberNumber, name) {
     tabId = tab.id;
     await waitForTabLoad(tabId);
 
-    const score  = await fetchMatchScore(tabId, match.match_id, memberNumber, name, push);
+    const score  = await fetchMatchScore(tabId, match.match_id, memberNumber, name, push, requestedDivision);
     if (score._pageMatchType) match.match_type = score._pageMatchType;
+    const skip = score._divisionSkipped || divisionSkip(score.division, requestedDivision);
+    if (skip) {
+      push(`Division ${requestedDivision}: 1 ${skip} skip; no stage requests.`);
+      return { result: { ...buildResult(match, {}, memberNumber), _divisionSkipped: skip }, log };
+    }
     const classifierMap = score.overall_pct != null
       ? await fetchMatchDef(match.match_id, push)
       : null;
     const stageRepair = score.overall_pct != null
       ? await fetchStageData(tabId, match.match_id, memberNumber, name, score._divKey, score._stageOptions, push, classifierMap, score._divisionOptions)
       : { stages: [], expectedCount: null, fetchedCount: 0, failedStages: [], state: 'unknown' };
-    const cache = await getCache();
-    const previous = isSameOwnerCache(cache[match.match_id], memberNumber) ? cache[match.match_id] : null;
+    const previous = owned && !divisionSkip(owned.division, requestedDivision) ? owned : null;
     const stages = mergeStageRepair(previous?.stages, stageRepair);
     const result = {
       ...(previous || {}),
@@ -1903,7 +1955,8 @@ async function refreshMatch(match, memberNumber, name) {
 }
 
 // ── Fetch score from results/new/{matchId} ────────────────────────────────────
-async function fetchMatchScore(tabId, matchId, memberNumber, name, push) {
+async function fetchMatchScore(tabId, matchId, memberNumber, name, push, requestedDivision) {
+  requestedDivision = requireRequestedDivision(requestedDivision);
   const url = `${PS_BASE}/results/new/${matchId}`;
 
   await chrome.tabs.update(tabId, { url });
@@ -1929,6 +1982,11 @@ async function fetchMatchScore(tabId, matchId, memberNumber, name, push) {
 
   const division = state.competitorData.division;
   push(`     found via ${state.found_by} — div: ${division}`);
+  const skip = divisionSkip(division, requestedDivision);
+  if (skip) {
+    push(`     skipping ${matchId}: ${skip} division (${division || 'unknown'}); requested ${requestedDivision}`);
+    return { _pageMatchType, _divisionSkipped: skip };
+  }
 
   // ── Step 2: ensure #resultLevel = Overall ────────────────────────────────
   const overallOpt = state.resultLevelOptions.find(o =>

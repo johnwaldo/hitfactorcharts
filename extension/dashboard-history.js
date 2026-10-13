@@ -554,6 +554,7 @@ async function refreshSingleMatch(match, btn) {
 
   const memberNumber = memberInput.value.trim().toUpperCase();
   const name         = nameInput.value.trim();
+  const requestedDivision = normalizeDivision(selectedDiv);
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -561,12 +562,14 @@ async function refreshSingleMatch(match, btn) {
       match:  { match_id: match.match_id, match_name: match.match_name, date: match.date },
       memberNumber,
       name,
+      requestedDivision,
     });
     if (!response.ok) throw new Error(response.error);
 
     const { result } = response.data;
     const idx = allResults.findIndex(r => r.match_id === match.match_id);
-    if (idx >= 0) allResults[idx] = { ...allResults[idx], ...result };
+    // Replace an intentional skip, rather than retaining scored fields from the old entry.
+    if (idx >= 0) allResults[idx] = result._divisionSkipped ? result : { ...allResults[idx], ...result };
 
     renderAll();
     renderMatchList();
