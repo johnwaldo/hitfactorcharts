@@ -126,6 +126,8 @@ Hit Factor Charts is a data-dense browser dashboard. Preserve the existing Inter
   and insights in `extension/dashboard-summaries.js`; the retained HTML starts
   hidden, with no layout space or accessibility exposure. Keep the renderer in
   `extension/dashboard-charts.js`, markup, aggregation, and insight code intact.
+  The retained `buildRecentHitZoneBars` aggregation helper also lives in
+  `extension/dashboard-charts.js`; call it only under the activation guard.
 - Raw reported hit counts remain stored and exported regardless of panel activation. Source-column availability is part of each refreshed stage record; legacy records without it are unknown, and combined M+NS data must never be split into invented M and NS values.
 - The hit-zone denominator is the reported A/B/C/D/M/NS or combined M+NS total. Procedural penalties remain outside it and are disclosed in chart help and tooltips.
 - Accuracy Trend uses that same valid reported hit-zone total as each match's percentage denominator; missing or zero-denominator matches are unavailable, never zero accuracy.
