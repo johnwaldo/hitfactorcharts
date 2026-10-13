@@ -16,8 +16,9 @@ const BACKUP_KEYS = Object.freeze([
   'memberNumber', 'name', 'matchCache', 'lastMatchList', 'stageOverrides',
   'fetchCoverage', 'deselectedMatches', 'classificationData', 'selectedDivision',
   'fetchTimeline', 'last8Matches', 'matchTypeOverrides', 'matchHistorySync',
-  'storageMetadata', 'theme',
+  'storageMetadata', 'theme', 'themeMode', 'accent',
 ]);
+const APPEARANCE_KEYS = Object.freeze(['theme', 'themeMode', 'accent']);
 
 const storageMigrationPromise = migrateStorage().catch(error => {
   console.error('[HFC] Storage migration failed without changing cached data:', error);
@@ -296,8 +297,13 @@ function validateBackupData(backup) {
   if (typeof data.fetchTimeline !== 'undefined' && !Object.hasOwn(FETCH_TIMELINES, data.fetchTimeline)) {
     throw new Error('Backup fetch timeline is invalid.');
   }
-  if (typeof data.theme !== 'undefined' && !['light', 'dark'].includes(data.theme)) {
-    throw new Error('Backup theme preference is invalid.');
+  for (const key of ['theme', 'themeMode']) {
+    if (Object.hasOwn(data, key) && !['system', 'light', 'dark'].includes(data[key])) {
+      throw new Error('Backup theme preference is invalid.');
+    }
+  }
+  if (Object.hasOwn(data, 'accent') && !['blue', 'dark-green', 'bright-green', 'purple'].includes(data.accent)) {
+    throw new Error('Backup accent preference is invalid.');
   }
   const expectedIdentity = ownerIdentity(data.memberNumber, data.name);
   if (!isRecord(backup.owner) || normalizedOwner(backup.owner.memberNumber) !== expectedOwner ||
@@ -336,18 +342,45 @@ async function importBackup(backup, { replaceExistingOwner = false } = {}) {
   }
 
   const previousManagedData = await chrome.storage.local.get(BACKUP_KEYS);
-  const omittedKeys = BACKUP_KEYS.filter(key => !Object.hasOwn(validated.data, key));
+  // Modern mode wins when both aliases exist; legacy theme-only backups must
+  // replace a stale themeMode as well as the sync-first dashboard preference.
+  const appearance = {};
+  const mode = validated.data.themeMode ?? validated.data.theme;
+  if (mode !== undefined) Object.assign(appearance, { theme: mode, themeMode: mode });
+  if (Object.hasOwn(validated.data, 'accent')) appearance.accent = validated.data.accent;
+  const appearanceKeys = Object.keys(appearance);
+  const previousSyncData = appearanceKeys.length ? await chrome.storage.sync.get(appearanceKeys) : {};
+  const restoredData = { ...validated.data, ...appearance };
+  const omittedKeys = BACKUP_KEYS.filter(key => !Object.hasOwn(restoredData, key) && !APPEARANCE_KEYS.includes(key));
+  let syncWriteAttempted = false;
   try {
-    await chrome.storage.local.set(validated.data);
+    await chrome.storage.local.set(restoredData);
     if (omittedKeys.length) await chrome.storage.local.remove(omittedKeys);
     await migrateStorage();
+    if (appearanceKeys.length) {
+      syncWriteAttempted = true;
+      await chrome.storage.sync.set(appearance);
+    }
   } catch (error) {
+    const rollbackErrors = [];
     try {
       await chrome.storage.local.set(previousManagedData);
       const previouslyAbsentKeys = BACKUP_KEYS.filter(key => !Object.hasOwn(previousManagedData, key));
       if (previouslyAbsentKeys.length) await chrome.storage.local.remove(previouslyAbsentKeys);
     } catch (rollbackError) {
-      throw new Error(`Restore failed and local rollback could not complete: ${rollbackError.message}`);
+      rollbackErrors.push(`local: ${rollbackError.message}`);
+    }
+    if (syncWriteAttempted) {
+      try {
+        await chrome.storage.sync.set(previousSyncData);
+        const previouslyAbsentKeys = appearanceKeys.filter(key => !Object.hasOwn(previousSyncData, key));
+        if (previouslyAbsentKeys.length) await chrome.storage.sync.remove(previouslyAbsentKeys);
+      } catch (rollbackError) {
+        rollbackErrors.push(`sync: ${rollbackError.message}`);
+      }
+    }
+    if (rollbackErrors.length) {
+      throw new Error(`Restore failed and rollback could not complete: ${rollbackErrors.join('; ')}`);
     }
     throw error;
   }
