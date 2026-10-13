@@ -4,6 +4,29 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.9.0 — 2026-10-13
+
+### Added
+
+- Accuracy Trend now includes an A-zone hit percentage series alongside the
+  existing outcome trends.
+
+### Fixed
+
+- Backups now support System, Light, and Dark appearance modes and include accent
+  preferences. Restored appearance settings take precedence over stale synced
+  values while older backups remain supported.
+- Local and CI release ZIPs now use matching exclusions for metadata, caches, and
+  editable source artwork. Build documentation reflects the versioned local ZIP
+  filename.
+
+### Changed
+
+- Removed the unused single-series chart renderer and the obsolete tracked March
+  extension ZIP without changing active dashboard behavior.
+- Added repository development tooling and stopped tracking local aidevops
+  configuration; these files are not included in the extension package.
+
 ## v1.8.3 — 2026-09-11
 
 ### Changed
