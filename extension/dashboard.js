@@ -190,10 +190,17 @@ function applyThemeSettings(mode, accent) {
 }
 function persistThemeSettings(mode, accent) {
   const values = { theme: mode, themeMode: mode, accent }; chrome.storage.local.set(values); chrome.storage.sync.set(values);
-} Promise.all([chrome.storage.sync.get(['themeMode', 'theme', 'accent']), chrome.storage.local.get(['themeMode', 'theme', 'accent'])]).then(([syncData, localData]) => {
+}
+async function initializeThemeSettings() {
+  const [syncData, localData] = await Promise.all([
+    chrome.storage.sync.get(['themeMode', 'theme', 'accent']),
+    chrome.storage.local.get(['themeMode', 'theme', 'accent']),
+  ]);
   const mode = [syncData.themeMode, syncData.theme, localData.themeMode, localData.theme].find(value => validThemeModes.has(value)) || 'system', accent = [syncData.accent, localData.accent].find(value => validAccents.has(value)) || 'blue';
   applyThemeSettings(mode, accent); persistThemeSettings(mode, accent);
-});
+}
+// The companion scripts below dashboard.js must exist before any startup render.
+document.addEventListener('DOMContentLoaded', initializeThemeSettings, { once: true });
 themeToggle.addEventListener('click', () => {
   const open = themeSettings.hidden;
   themeSettings.hidden = !open; themeToggle.setAttribute('aria-expanded', String(open));
@@ -246,6 +253,7 @@ let classifiersOnly  = false;   // when true, charts show only classifier stage 
 let showDivisionPct  = true;    // normal Score Over Time series visibility
 let showAdjustedPct  = true;    // normal Score Over Time series visibility
 let showTimePct      = true;    // normal Score Over Time series visibility
+let showDivisionTimePct = true; // independent complete-match division time series
 let selectedFetchTimeline = '6m'; // pre-fetch request scope; independent of analytics range
 let last8Matches = false;       // post-fetch analytics limit; never truncates cached history
 let matchTypeOverrides = {};    // match_id -> manual type for otherwise unconfirmed matches
@@ -440,10 +448,6 @@ function computeTimePct(stage) {
   return Math.min((fastestTime / shooterTime) * 100, 100);
 }
 
-function computeMatchTimePct(match) {
-  const values = getMetricStages(match).map(computeTimePct).filter(value => value != null);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-}
 // ── USPSA Classifier lookup ───────────────────────────────────────────────────
 // Maps classifier number (e.g. "99-11") → official name.
 // isClassifierStage() checks this table first, then falls back to regex for
@@ -851,7 +855,7 @@ async function initializeDashboard() {
   }
 }
 
-initializeDashboard();
+document.addEventListener('DOMContentLoaded', initializeDashboard, { once: true });
 
 // ── Versioned backup and recovery ────────────────────────────────────────────
 exportBackupBtn.addEventListener('click', async () => {
@@ -924,6 +928,7 @@ function syncChartModeControls() {
     ['divisionPctChk', 'divisionToggleWrap', showDivisionPct],
     ['adjustedPctChk', 'adjustedToggleWrap', showAdjustedPct],
     ['timePctChk', 'timePctToggleWrap', showTimePct],
+    ['divisionTimePctChk', 'divisionTimePctToggleWrap', showDivisionTimePct],
   ];
   modes.forEach(([inputId, wrapId, active]) => {
     document.getElementById(inputId).checked = active;
@@ -941,6 +946,9 @@ function setChartMode(mode, enabled) {
     classifiersOnly = false;
   } else if (mode === 'adjusted') {
     showAdjustedPct = enabled;
+    classifiersOnly = false;
+  } else if (mode === 'divisionTime') {
+    showDivisionTimePct = enabled;
     classifiersOnly = false;
   } else {
     showTimePct = enabled;
@@ -969,6 +977,9 @@ document.getElementById('adjustedPctChk').addEventListener('change', e => {
 });
 document.getElementById('timePctChk').addEventListener('change', e => {
   setChartMode('time', e.target.checked);
+});
+document.getElementById('divisionTimePctChk').addEventListener('change', e => {
+  setChartMode('divisionTime', e.target.checked);
 });
 
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
@@ -1307,6 +1318,7 @@ function resetSecondaryAnalysis() {
 
 function renderAll() {
   renderDateRangeFilter();
+  document.getElementById('performanceMetricAvailability').hidden = true;
   if (!allResults.length) {
     renderLast8Control(0, 0);
     return;
@@ -1648,13 +1660,8 @@ function renderAll() {
     points: adjPoints,
   };
 
-  const timeSeries = {
-    label: 'Time % (experimental)', color: '#00d9ff', dash: true,
-    points: viewSorted.map(r => ({
-      date: r.date, y: computeMatchTimePct(r), label: r.match_name,
-      division: r.division, overall_pct: effectiveOverallPct(r),
-    })),
-  };
+  const timeSeries = buildMatchTimeSeries(viewSorted, 'overall');
+  const divisionTimeSeries = buildMatchTimeSeries(viewSorted, 'division');
 
   const selectedSeries = [];
   const unavailableMetrics = [];
@@ -1669,8 +1676,15 @@ function renderAll() {
   }
   if (showTimePct) {
     if (timeSeries.points.filter(point => point.y != null).length >= 2) selectedSeries.push(timeSeries);
-    else unavailableMetrics.push('Time % needs 2 usable matches with valid combined-field raw-time benchmarks.');
+    else unavailableMetrics.push('Overall Time % needs 2 verified complete-match raw-time comparisons. Refresh legacy matches.');
   }
+  if (showDivisionTimePct) {
+    if (divisionTimeSeries.points.filter(point => point.y != null).length >= 2) selectedSeries.push(divisionTimeSeries);
+    else unavailableMetrics.push('Division Time % needs 2 verified complete-match division raw-time comparisons. Refresh legacy matches.');
+  }
+  const availability = document.getElementById('performanceMetricAvailability');
+  availability.textContent = unavailableMetrics.join(' ');
+  availability.hidden = unavailableMetrics.length === 0;
 
   if (selectedSeries.length) {
     drawMultiSeriesChart(document.getElementById('chartTime'), selectedSeries, allDates, {

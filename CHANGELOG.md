@@ -4,6 +4,38 @@ All notable user-facing changes are documented here. Update this file before pub
 
 ## Unreleased
 
+## v1.10.0 — 2026-10-19
+
+### Added
+
+- Overall Time % and Division Time % independently compare your complete raw
+  match time with the fastest eligible complete-match competitor across all
+  divisions and within your division. Both include classifier stages and ignore
+  stage-analysis exclusions; they identify fastest raw times, not official score
+  winners.
+- Time-series tooltips disclose your raw seconds, reference seconds and scope,
+  stage count, and ties. CSV exports include both match percentages and raw totals,
+  with retained stage-only time columns explicitly labelled as legacy metrics.
+
+### Fixed
+
+- Replaced the experimental average of stage-time percentages with verified
+  single-competitor match totals. Incomplete or disqualified competitors, invalid
+  times, ambiguous identities, and unverified field coverage cannot supply a
+  benchmark. Older stage-only caches remain unavailable until refreshed, without
+  discarding existing scores, history, or stage-analysis preferences.
+- PractiScore human-verification challenges now stop collection and preserve the
+  open tab for manual completion instead of closing it. Individual refresh
+  failures display an actionable dashboard message and retain cached results.
+- Dashboard and theme startup wait for companion scripts before rendering,
+  preventing the reported missing `_avg` and `renderClassBox` startup errors.
+
+### Changed
+
+- Documented the complete-match time definitions and refresh behavior. Both time
+  series have independent controls, distinct theme-aware colors and dash patterns,
+  and a visible explanation when fewer than two verified comparisons are available.
+
 ## v1.9.1 — 2026-10-13
 
 ### Fixed

@@ -76,7 +76,8 @@ async function loadBackground(initialStorage = {}, chromeOverrides = {}) {
   vm.runInContext(`${backgroundSource}\n;globalThis.__hfcTest = {
     storageMigrationPromise, resolveHistoryDiscovery, collectMatchHistory,
     normalizeHistorySync, createBackup, importBackup, fetchScores, isReusableMatchCache,
-    refreshMatch, fetchMatchScore, normalizeRequestedDivision
+    refreshMatch, fetchMatchScore, normalizeRequestedDivision, fetchStageData,
+    collectResultsPages, getResultsNewState, computeTotalTimeBenchmarks
   };`, context);
   await context.__hfcTest.storageMigrationPromise;
   return { context, local, sync: chrome.storage.sync, api: context.__hfcTest, actionCallback, messageCallback };
@@ -170,7 +171,7 @@ test('toolbar action does not duplicate an active dashboard when its window cann
   assert.equal(created, false);
 });
 
-test('compatible complete caches migrate without losing stages or preferences', async () => {
+test('legacy stage-only caches preserve stages and preferences without promoting total-time capability', async () => {
   const { local } = await loadBackground({
     memberNumber: 'A103',
     matchCache: { [firstId]: completeCache(1) },
@@ -179,15 +180,48 @@ test('compatible complete caches migrate without losing stages or preferences', 
   });
 
   assert.equal(local.data.storageMetadata.schemaVersion, 2);
-  assert.equal(local.data.matchCache[firstId].cache_completeness.schema_version, 3);
+  assert.equal(local.data.matchCache[firstId].cache_completeness.schema_version, 1);
   assert.deepEqual(local.data.matchCache[firstId].stages, [{ num: 1, name: 'Stage 1', time: 10, fastest_combined_time: 10, is_classifier: false }]);
   assert.deepEqual(local.data.stageOverrides[firstId], { '01|Stage 1': { included: false } });
+});
+
+test('compatible total-time caches migrate and round trip without losing verified references', async () => {
+  const cache = { ...completeCache(1), division: 'CO', match_time_benchmarks: {
+    version: 1, state: 'complete', stage_count: 1, eligible_count: 3,
+    shooter: { competitor_id: 'member:A103', division: 'co', total_time: 10 },
+    overall: { competitor_id: 'member:B1', division: 'pcc', total_time: 8, tie_count: 1 },
+    division: { competitor_id: 'member:B2', division: 'co', total_time: 9, tie_count: 1 },
+  } };
+  const source = await loadBackground({ memberNumber: 'A103', matchCache: { [firstId]: cache }, storageMetadata: { schemaVersion: 1 } });
+  assert.equal(source.local.data.matchCache[firstId].cache_completeness.schema_version, 4);
+  assert.equal(source.api.isReusableMatchCache(source.local.data.matchCache[firstId], 'A103'), true);
+  const backup = await source.api.createBackup();
+  const target = await loadBackground();
+  await target.api.importBackup(backup);
+  assert.deepEqual(target.local.data.matchCache[firstId].match_time_benchmarks, cache.match_time_benchmarks);
+  const preserved = structuredClone(target.local.data);
+  backup.data.matchCache[firstId].match_time_benchmarks.overall.total_time = 20;
+  await assert.rejects(target.api.importBackup(backup), /match-time benchmarks/);
+  assert.deepEqual(target.local.data, preserved);
 });
 
 test('complete caches without raw-time benchmarks are repaired instead of reused', async () => {
   const { api } = await loadBackground();
   const legacy = completeCache(2);
   delete legacy.stages[0].fastest_combined_time;
+  assert.equal(api.isReusableMatchCache(legacy, 'A103'), false);
+});
+
+test('stage minima never supply total-time capability, while recorded unavailability avoids perpetual repair', async () => {
+  const { api } = await loadBackground();
+  const legacy = completeCache(4);
+  assert.equal(api.isReusableMatchCache(legacy, 'A103'), false);
+  legacy.match_time_benchmarks = { version: 1, state: 'unavailable', reason: 'Source identity unavailable', retryable: false };
+  assert.equal(api.isReusableMatchCache(legacy, 'A103'), true);
+  assert.equal(api.isReusableMatchCache(legacy, 'B999'), false);
+  legacy.match_time_benchmarks.retryable = true;
+  assert.equal(api.isReusableMatchCache(legacy, 'A103'), false);
+  legacy.match_time_benchmarks.reason = '';
   assert.equal(api.isReusableMatchCache(legacy, 'A103'), false);
 });
 
@@ -581,7 +615,8 @@ test('fresh mixed history stops PCC and unknown divisions before definitions and
 test('mixed complete, partial and legacy caches never leak other-division stages', async () => {
   const matches = [firstId, secondId, thirdId, delayedId].map(match_id => ({ match_id, match_name: 'USPSA Match', date: '2026-09-01' }));
   const { context, local, api } = await loadBackground({ lastMatchList: matches, matchCache: {
-    [firstId]: { ...completeCache(3), division: 'CO', overall_pct: 80 },
+    [firstId]: { ...completeCache(4), division: 'CO', overall_pct: 80,
+      match_time_benchmarks: { version: 1, state: 'unavailable', reason: 'Source identity unavailable', retryable: false } },
     [secondId]: { ...completeCache(3), division: 'PCC', overall_pct: 90 },
     [thirdId]: { ...completeCache(3), division: 'PCC', overall_pct: 90,
       cache_completeness: { ...completeCache(3).cache_completeness, state: 'partial' } },
@@ -613,7 +648,8 @@ test('refresh skips known mismatches without opening a tab and preserves cached 
 });
 
 test('refresh discovers mismatched or unknown division without stage repair, and includes aliases', async () => {
-  const { context, api } = await loadBackground();
+  const removed = [];
+  const { context, api } = await loadBackground({}, { tabs: { remove: async id => { removed.push(id); } } });
   installDivisionRuntime(context, [], { [firstId]: 'PCC', [secondId]: '', [thirdId]: 'CO' });
   for (const id of [firstId, secondId]) {
     const { result } = await api.refreshMatch({ match_id: id }, 'A103', '', 'co');
@@ -624,6 +660,7 @@ test('refresh discovers mismatched or unknown division without stage repair, and
   assert.equal(included.result.overall_pct, 80);
   assert.deepEqual([...context.__calls.definitions], [thirdId]);
   assert.deepEqual([...context.__calls.stages], [thirdId]);
+  assert.deepEqual(removed, [1, 1, 1]);
 });
 
 test('included partial repair preserves stages but never trusts another owner or unknown legacy division', async () => {
@@ -645,4 +682,218 @@ test('included partial repair preserves stages but never trusts another owner or
   assert.equal(response.results.find(r => r.match_id === secondId).stages.length, 0);
   assert.equal(response.results.find(r => r.match_id === thirdId).stages.length, 0);
   assert.equal(local.data.matchCache[secondId].cached_for, 'A103');
+});
+
+test('stage collector produces complete per-competitor totals including a classifier and refuses truncated combined pages', async () => {
+  const { context, api } = await loadBackground();
+  context.__fields = [
+    [{ competitor_id: 'member:A103', division: 'CO', time: 60, hf: 20 },
+      { competitor_id: 'member:B1', division: 'PCC', time: 5, hf: 1 },
+      { competitor_id: 'member:B2', division: 'CO', time: 90, hf: 2 }],
+    [{ competitor_id: 'member:A103', division: 'CO', time: 65, hf: 20 },
+      { competitor_id: 'member:B1', division: 'PCC', time: 95, hf: 1 },
+      { competitor_id: 'member:B2', division: 'CO', time: 20, hf: 2 }],
+  ];
+  vm.runInContext(`sleep = async () => {}; runInTab = async () => true;
+    collectResultsPages = async (_tab, _mem, _name, _push, level, division) => ({
+      _ready: true, _found: true, _paginationIncomplete: division === 'combined' && globalThis.__truncate === true,
+      competitorData: __fields[Number(level) - 1][0], allCompetitorRows: __fields[Number(level) - 1]
+    });`, context);
+  const args = [1, firstId, 'A103', '', 'carryoptics', [{ value: '1', text: 'Stage 1' }, { value: '2', text: 'Stage 2' }],
+    () => {}, new Map([[1, { is_classifier: false }], [2, { is_classifier: true }]]),
+    [{ value: 'combined', text: 'Combined' }, { value: 'carryoptics', text: 'Carry Optics' }], context.__fields[0]];
+  const result = await api.fetchStageData(...args);
+  assert.equal(result.state, 'complete');
+  assert.equal(result.stages[1].is_classifier, true);
+  assert.equal(result.match_time_benchmarks.shooter.total_time, 125);
+  assert.equal(result.match_time_benchmarks.overall.total_time, 100);
+  assert.equal(result.match_time_benchmarks.division.total_time, 110);
+  assert.equal(result.stages[0].fastest_combined_time, 5);
+  assert.equal(result.stages[0].xdiv_benchmarks.CO.topHF, 20);
+  assert.equal(result.match_time_benchmarks.rows, undefined);
+  context.__truncate = true;
+  const partial = await api.fetchStageData(...args);
+  assert.equal(partial.state, 'partial');
+  assert.equal(partial.match_time_benchmarks.state, 'unavailable');
+  assert.equal(partial.match_time_benchmarks.overall, undefined);
+});
+
+test('result pagination refuses wrong selected stage or division and retains all settled pages', async () => {
+  const { context, api } = await loadBackground();
+  context.__state = { _ready: true, _found: true, pageSignature: 'first', hasNextPage: false,
+    selectedResultLevel: '1', selectedDivisionLevel: 'combined', allCompetitorRows: [{ competitor_id: 'one' }] };
+  vm.runInContext(`sleep = async () => {}; runInTab = async (_tab, fn) =>
+    fn === getResultsNewState ? __state : { clicked: false, alreadyFirst: true };`, context);
+  const good = await api.collectResultsPages(1, '', '', () => {}, '1', 'combined');
+  assert.equal(good._paginationIncomplete, undefined);
+  for (const [level, division] of [['2', 'combined'], ['1', 'carryoptics']]) {
+    const bad = await api.collectResultsPages(1, '', '', () => {}, level, division);
+    assert.equal(bad._paginationIncomplete, true);
+    assert.equal(bad.allCompetitorRows.length, 0);
+  }
+  vm.runInContext(`globalThis.__page = 0; runInTab = async (_tab, fn) => {
+    if (fn === getResultsNewState) return { ...__state, pageSignature: __page ? 'second' : 'first',
+      hasNextPage: !__page, allCompetitorRows: [{ competitor_id: __page ? 'two' : 'one' }] };
+    if (fn === clickNextResultsPage) { __page++; return true; }
+    return { clicked: false, alreadyFirst: true };
+  };`, context);
+  const all = await api.collectResultsPages(1, '', '', () => {}, '1', 'combined');
+  assert.equal(all._pagesRead, 2);
+  assert.deepEqual(Array.from(all.allCompetitorRows, row => row.competitor_id), ['one', 'two']);
+});
+
+test('human verification aborts result collection immediately, including pagination reset', async () => {
+  const { context, api } = await loadBackground();
+  for (const blockedRead of [1, 2, 3]) {
+    context.__blockedRead = blockedRead;
+    vm.runInContext(`globalThis.__reads = 0; globalThis.__resets = 0;
+      sleep = async () => {};
+      runInTab = async (_tab, fn) => {
+        if (fn === getResultsNewState) {
+          if (++__reads === __blockedRead) return { _cf: true };
+          return { _ready: true, pageSignature: 'first', hasPreviousPage: false };
+        }
+        if (fn === resetResultsPagination) {
+          __resets++;
+          return { clicked: __blockedRead === 3, alreadyFirst: __blockedRead !== 3 };
+        }
+        throw new Error('No further result actions are allowed');
+      };`, context);
+    await assert.rejects(api.collectResultsPages(1, '', '', () => {}), {
+      code: 'PRACTISCORE_VERIFICATION_REQUIRED', message: /requires human verification/,
+    });
+    assert.equal(context.__reads, blockedRead);
+    assert.equal(context.__resets, blockedRead === 1 ? 0 : 1);
+  }
+});
+
+test('a challenged single-match refresh preserves stored data and leaves its tab open and focused', async () => {
+  const removed = [];
+  const activated = [];
+  const focused = [];
+  const { context, api, local } = await loadBackground({
+    memberNumber: 'A103',
+    matchCache: { [firstId]: { ...completeCache(4), division: 'CO', overall_pct: 80 } },
+    lastMatchList: [{ match_id: firstId, match_name: 'Match', date: '2026-09-01' }],
+    stageOverrides: { [firstId]: { '01|Stage 1': { included: false } } },
+    deselectedMatches: [secondId],
+  }, {
+    tabs: {
+      remove: async id => { removed.push(id); },
+      update: async (id, details) => {
+        if (details.active) activated.push([id, details]);
+        return { id, windowId: 4 };
+      },
+    },
+    windows: { update: async (...args) => { focused.push(args); } },
+  });
+  vm.runInContext(`sleep = async () => {}; waitForTabLoad = async () => {};
+    runInTab = async () => ({ _cf: true });`, context);
+  const before = structuredClone(local.data);
+  await assert.rejects(api.refreshMatch(
+    { match_id: firstId, match_name: 'Match', date: '2026-09-01' }, 'A103', '', 'co'
+  ), { code: 'PRACTISCORE_VERIFICATION_REQUIRED', message: /requires human verification/ });
+  assert.deepEqual(local.data, before);
+  assert.deepEqual(removed, []);
+  assert.deepEqual(JSON.parse(JSON.stringify(activated)), [[1, { active: true }]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(focused)), [[4, { focused: true }]]);
+});
+
+test('a challenged refresh remains open and reports verification even if tab or window focus fails', async () => {
+  for (const failure of ['tab', 'window']) {
+    const removed = [];
+    const { context, api, local } = await loadBackground({
+      matchCache: { [firstId]: { ...completeCache(4), division: 'CO', overall_pct: 80 } },
+    }, {
+      tabs: {
+        remove: async id => { removed.push(id); },
+        update: async (id, details) => {
+          if (details.active && failure === 'tab') throw new Error('Tab focus unavailable');
+          return { id, windowId: 4 };
+        },
+      },
+      windows: { update: async () => { throw new Error('Window focus unavailable'); } },
+    });
+    vm.runInContext(`sleep = async () => {}; waitForTabLoad = async () => {};
+      runInTab = async () => ({ _cf: true });`, context);
+    const before = structuredClone(local.data);
+    await assert.rejects(api.refreshMatch(
+      { match_id: firstId, match_name: 'Match', date: '2026-09-01' }, 'A103', '', 'co'
+    ), { code: 'PRACTISCORE_VERIFICATION_REQUIRED' });
+    assert.deepEqual(local.data, before);
+    assert.deepEqual(removed, []);
+  }
+});
+
+test('ordinary refresh errors still close the owned tab without replacing cached data', async () => {
+  const removed = [];
+  const { context, api, local } = await loadBackground({
+    matchCache: { [firstId]: { ...completeCache(4), division: 'CO', overall_pct: 80 } },
+  }, { tabs: { remove: async id => { removed.push(id); } } });
+  vm.runInContext(`sleep = async () => {}; waitForTabLoad = async () => {};
+    runInTab = async () => { throw new Error('Results script failed'); };`, context);
+  const before = structuredClone(local.data);
+  await assert.rejects(api.refreshMatch(
+    { match_id: firstId, match_name: 'Match', date: '2026-09-01' }, 'A103', '', 'co'
+  ), /Results script failed/);
+  assert.deepEqual(local.data, before);
+  assert.deepEqual(removed, [1]);
+});
+
+test('a match fetch also preserves and activates a verification tab without replacing that match cache', async () => {
+  const match = { match_id: firstId, match_name: 'USPSA Match', date: '2026-09-01' };
+  const removed = [];
+  const activated = [];
+  const { context, api, local } = await loadBackground({
+    memberNumber: 'A103',
+    matchCache: { [firstId]: { ...completeCache(4), division: 'CO', overall_pct: 80 } },
+    lastMatchList: [match],
+  }, { tabs: { remove: async id => { removed.push(id); } } });
+  installDivisionRuntime(context, [match], { [firstId]: 'CO' });
+  context.chrome.tabs.update = async (id, details) => {
+    if (details.active) activated.push(id);
+    return { id, windowId: 4 };
+  };
+  vm.runInContext(`collectResultsPages = __hfcTest.collectResultsPages;
+    runInTab = async () => ({ _cf: true });`, context);
+  const before = structuredClone(local.data.matchCache);
+  await assert.rejects(api.fetchScores('A103', '', { value: 'all' }, { requestedDivision: 'co' }), {
+    code: 'PRACTISCORE_VERIFICATION_REQUIRED',
+  });
+  assert.deepEqual(local.data.matchCache, before);
+  assert.deepEqual(activated, [1]);
+  assert.deepEqual(removed, []);
+});
+
+test('results parser captures only stable source identity, eligibility status and strict raw times', async () => {
+  const { context, api } = await loadBackground();
+  const row = (cells, attributes = {}, linkedIds = []) => ({ textContent: cells.join(' '),
+    querySelectorAll: selector => selector === 'td' ? cells.map(textContent => ({ textContent }))
+      : linkedIds.map(id => ({ getAttribute: key => key === 'shooterid' ? id : null })),
+    getAttribute: key => attributes[key] || null });
+  const rows = [row(['1', 'Example', 'A103', 'CO', '60.50', '']),
+    row(['2', 'Other', '', 'PCC', '12.00', 'DQ'], { 'data-shooter-id': 'source-2' }),
+    row(['3', 'Same display name', '', 'CO', '10garbage', '']),
+    row(['4', 'Same display name', '', 'CO', '9.50', ''], {}, ['source-4', 'source-4']),
+    row(['5', 'Conflicting links', '', 'CO', '8.00', ''], {}, ['source-5', 'other-5']),
+    row(['6', 'Conflicting attributes', 'A106', 'CO', '7.00', ''],
+      { 'data-shooter-id': 'source-6' }, ['other-6'])];
+  const headers = ['Place', 'Name', 'Member', 'Div', 'Time', 'Status'].map(textContent => ({ textContent }));
+  const table = { querySelectorAll: selector => selector === 'thead th, thead td' ? headers : rows,
+    closest: () => ({ querySelectorAll: () => [] }) };
+  context.document = { title: 'Results', querySelector: selector => selector === '#mainResultsDiv'
+    ? { querySelectorAll: () => [table] } : null, querySelectorAll: () => [],
+    getElementById: id => ({ value: id === 'resultLevel' ? '1' : 'combined', options: [] }) };
+  const result = api.getResultsNewState('A103', '');
+  assert.equal(result.competitorData.competitor_id, 'member:A103');
+  assert.equal(result.competitorData.time, 60.5);
+  assert.equal(result.allCompetitorRows[1].competitor_id, 'source:source-2');
+  assert.equal(result.allCompetitorRows[1].ineligible, true);
+  assert.equal(result.allCompetitorRows[2].competitor_id, null);
+  assert.equal(result.allCompetitorRows[2].time, null);
+  assert.equal(result.allCompetitorRows[3].competitor_id, 'source:source-4');
+  assert.equal(result.allCompetitorRows[3].time, 9.5);
+  assert.equal(result.allCompetitorRows[4].competitor_id, null);
+  assert.equal(result.allCompetitorRows[5].competitor_id, null);
+  assert.equal(result.selectedDivisionLevel, 'combined');
 });

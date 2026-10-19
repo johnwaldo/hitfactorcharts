@@ -487,6 +487,7 @@
     .chart-mode-toggle {
       display: none;
       align-items: center;
+      min-height: 24px;
       gap: 7px;
       cursor: pointer;
       user-select: none;
@@ -632,6 +633,8 @@
     }
     .chart-note strong { color: #8a9bb0; font-weight: 600; }
     .chart-note em { font-style: normal; color: #7a8898; }
+    #performanceMetricAvailability,
+    #timePctHelp { color: var(--chart-text); }
 
     /* ── Consistency stat — color-coded by variance level ── */
     .consistency-good { color: #4caf50; }
@@ -1447,6 +1450,9 @@
     [data-theme="light"] .view-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
     [data-theme="light"] .chart-section { border-top-color: #e0e2e8; }
     [data-theme="light"] .chart-section h3 { color: #8a9bb0; }
+    [data-theme="light"] .chart-mode-toggle .toggle-lbl { color: #5a6478; }
+    [data-theme="light"] .chart-mode-toggle.active .toggle-lbl { color: #2563eb; }
+    [data-theme="light"] .chart-mode-toggle .toggle-switch input:focus-visible ~ .toggle-track { outline-color: #2563eb; }
     [data-theme="light"] .chart-note { background: #f0f2f7; border-left-color: #c0c4cc; color: #5a6478; }
     [data-theme="light"] .chart-note strong { color: #2c3040; }
     [data-theme="light"] .chart-note em { color: #4a5060; }
@@ -1755,21 +1761,28 @@
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
           </span>
         </label>
-        <label id="timePctToggleWrap" class="chart-mode-toggle" title="Experimental raw-time comparison; excludes classifiers and stages without a valid combined-field time.">
-          <span class="toggle-lbl">Time % <small>(experimental)</small></span>
+        <label id="timePctToggleWrap" class="chart-mode-toggle" title="Fastest complete raw match time across all divisions divided by your complete raw match time.">
+          <span class="toggle-lbl">Overall Time %</span>
           <span class="toggle-switch">
             <input type="checkbox" id="timePctChk" aria-describedby="timePctHelp">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </span>
+        </label>
+        <label id="divisionTimePctToggleWrap" class="chart-mode-toggle" title="Fastest complete raw match time in your division divided by your complete raw match time.">
+          <span class="toggle-lbl">Division Time %</span>
+          <span class="toggle-switch">
+            <input type="checkbox" id="divisionTimePctChk" aria-describedby="timePctHelp">
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
           </span>
         </label>
       </div>
     </div>
     <canvas id="chartTime" height="380"></canvas>
+    <div id="performanceMetricAvailability" class="chart-note" role="status" hidden></div>
     <div class="chart-note">
       <strong>Division %</strong> is your score relative to the top shooter in your division at that match — it tells you how you placed, but it only reflects who happened to show up in your division that day.
        <strong>Adjusted %</strong> is a field-strength correction: it takes the top stage hit factor from every division at that match, translates each result to your division's equivalent using national HHF ratios from hitfactor.info, and measures you against the strongest normalized result.
-       <strong>Time % (experimental)</strong> compares each usable non-classifier stage's raw time with the fastest valid combined-field raw time, then averages those stage percentages for the match. It is raw-time-only, capped at 100%, and unavailable when a match has no trustworthy raw-time benchmarks; it never replaces Score Over Time or Adjusted %.
-       <span id="timePctHelp" class="visually-hidden">Experimental raw-time-only comparison. Classifiers, excluded stages, invalid times, and stages without a combined-field benchmark are omitted.</span>
+       <span id="timePctHelp"><strong>Overall Time %</strong> is the fastest eligible competitor's complete raw match time across all divisions divided by your complete raw match time. <strong>Division Time %</strong> uses the fastest complete raw time in your division. Both include every match stage, including classifiers, ignore stage-analysis exclusions, and apply no scoring or equipment adjustments. They identify fastest raw times, not official score winners; ties share 100%. Missing stages, invalid times, ambiguous competitor identities, or unverified field coverage make the comparison unavailable. Refresh older matches to collect these totals.</span>
        Adjusted % compares you with the strongest normalized stage result at that match, regardless of division. Match and adjusted badges are familiar but unofficial class equivalents; use Classifiers Only for official classifier context.
        The numeric 40%, 60%, 75%, 85%, and 95% lines are neutral percentage references, not official classifications.
     </div>
