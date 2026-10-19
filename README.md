@@ -35,7 +35,7 @@ A Chrome extension that pulls your USPSA match results from PractiScore and disp
 - **Per-stage breakdown** — expand any match row to see hits, HF, and percentage for every stage; classifier stages show official USPSA % (vs national reference HF) as the primary number; individual stages can be excluded from ratings with an optional note
 - **Division-aware filtering** — automatically detects which division you shot in each match; a persistent selector filters every chart, statistic, classification, history row, and CSV export to one division
 - **Field-strength adjusted %** — for non-classifier stages, takes the top hit factor from every represented division, translates each result to your division's scale using hitfactor.info HHF ratios, and measures you against the strongest normalized benchmark — a more reliable indicator of improvement than raw division % when your division draw varies
-- **Experimental Time %** — an opt-in raw-time-only comparison using the fastest valid combined-field stage time divided by your raw time; classifiers, invalid times, and unavailable benchmarks are excluded
+- **Overall and Division Time %** — independently selectable raw-time comparisons with the fastest complete-match competitor across all divisions and within your division; includes every match stage, including classifiers
 - **Chart summaries** — automatic plain-English insight below each chart: score trend (last 3 vs baseline), adjusted % context, placement percentile, and classifier trend using the national HHF reference
 - **Classifier tracking** — overlay of your classifier scores against your running average; identifies each CM by number and links to the USPSA stage description PDF
 - **Consistency card** — match-to-match score variance and accuracy loss metrics
@@ -81,11 +81,15 @@ Only** to see that official class context.
 
 Where captured GM hit factors are available, the stage table separately shows **HF vs GM**: your hit factor compared with the captured median GM benchmark. This is a performance comparison, not a shooter classification. Mixed or missing benchmark data remains unavailable rather than inventing a class context.
 
-Use **Adjusted % Only** beside **Classifiers Only** to inspect the adjusted series without raw match percentages. The modes are mutually exclusive because adjusted scores exclude classifier stages. Adjusted-only mode never falls back to raw scores; when fewer than two usable adjusted matches are available, the chart explains that older matches may need to be refreshed to load non-classifier cross-division benchmark data. Switching modes uses cached data and does not fetch or rewrite match history.
+Use the independent **Division performance**, **Adjusted %**, **Overall Time %**, and **Division Time %** switches to select normal chart series. All are enabled by default when each has at least two usable match points; unavailable selected metrics are explained rather than replaced with another formula. **Classifiers Only** is the separate alternate view. Switching controls uses cached data and does not fetch or rewrite match history.
 
-Score Over Time, Adjusted % Only, Non-Classifier Stage Trend, and Classifier vs Match Score include neutral numeric reference lines at 40%, 60%, 75%, 85%, and 95%. These lines preserve a linear 0–100% scale for visual comparison only; they do not infer a USPSA class, add class-coloured bands, or change official classifier context.
+Score Over Time, Non-Classifier Stage Trend, and Classifier vs Match Score include neutral numeric reference lines at 40%, 60%, 75%, 85%, and 95%. These lines preserve a linear 0–100% scale for visual comparison only; they do not infer a USPSA class, add class-coloured bands, or change official classifier context.
 
-**Time % (experimental)** is an optional supplemental series, not a replacement for either Division % or Adjusted %. Each usable non-classifier stage is `fastest valid combined-field raw time / your raw time × 100`, capped at 100%; a match point is the arithmetic mean of its usable stages. It does not apply division or power-factor weighting, and never substitutes hit factor, a division winner, or a guessed benchmark. A match with no usable stage times is unavailable.
+**Overall Time %** = `fastest eligible competitor's complete raw match time across all divisions / your complete raw match time × 100`. **Division Time %** uses the fastest eligible complete raw total in your own division. With your 125 seconds, an overall raw-time champion at 100 seconds, and a Carry Optics raw-time champion at 110 seconds, the values are **80% overall** and **88% division**. The reporting shooter participates; champions and ties receive 100%.
+
+These supplemental series compare raw elapsed time only—not hit factor, points, accuracy, penalties, power factor, or official score winners. Each reference is one competitor's complete total across every match stage, including classifiers. Stage-analysis exclusions never change these totals. Match/date/division selection still controls which complete match points appear. Neither a mean of stage ratios nor a sum of different stage winners is a valid match total.
+
+Missing/zero/invalid stage times and source-disqualified or incomplete competitors cannot become champions. Unverified stage sets, field pagination, or stable competitor identities make Time % unavailable rather than inventing a reference. Refresh older in-range matches to collect the new capability; existing scores and history remain intact. Tooltips show your and the champion's seconds and reference scope. CSV repeats both complete-match ratios and their raw totals alongside each stage; retained stage-only columns are explicitly labelled **Legacy Stage Time % (non-classifier)** and **Legacy Fastest Combined Stage Time (s)**, not the new match metrics.
 
 ---
 
@@ -173,6 +177,12 @@ member requires explicit confirmation. Full match history remains in
    in the status bar.
 
 5. **Explore your data** — the summary bar shows matches found, average %, best %, field-strength adjusted average, and your USPSA classification. The **Scored Matches / All Matches** toggle below the cards switches between member-number lookup results and all name-matched results.
+
+If a match fetch or individual refresh encounters Cloudflare verification, it
+stops without replacing that match's cached results. The PractiScore tab stays
+open and is brought forward so you can finish the check. Once the results page
+is available, return to the dashboard and retry the individual match refresh;
+it does not resume automatically. Successful requests close their temporary tab.
 
 ### Filtering by division
 

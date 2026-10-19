@@ -577,6 +577,7 @@ async function refreshSingleMatch(match, btn) {
 
   } catch (err) {
     console.error('Refresh failed:', err);
+    setStatus(escHtml(`Refresh failed: ${err.message}`), 'error');
     btn.disabled = false;
     btn.classList.remove('spinning');
   }

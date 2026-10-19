@@ -152,3 +152,81 @@ test('single-match refresh sends a division snapshot and replaces intentionally 
   assert.deepEqual(context.allResults[0], skipped);
   assert.equal(context.allResults[0].hf, undefined);
 });
+
+test('cached dashboard startup waits until companion scripts have loaded', async () => {
+  const script = fs.readFileSync('extension/dashboard.js', 'utf8');
+  const startup = script.slice(script.indexOf('async function initializeDashboard('),
+    script.indexOf('// ── Versioned backup and recovery'));
+  const listeners = [];
+  let storageCalls = 0, renders = 0;
+  const context = vm.createContext({
+    document: { addEventListener: (event, handler, options) => { listeners.push({ event, handler, options }); } },
+    chrome: {
+      runtime: { sendMessage: async () => { storageCalls++; } },
+      storage: { local: { get: async () => ({ memberNumber: 'A103', selectedDivision: 'co',
+        lastMatchList: [{ match_id: 'match', date: '2026-09-01' }], matchCache: {} }) } },
+    },
+    memberInput: {}, nameInput: {}, divisionFilter: {}, fetchTimelineSelect: {},
+    normalizeDivision: value => value, normalizeFetchTimeline: value => value,
+    normalizeMatchTypeOverrides: value => value, normalizeFetchCoverage: value => value,
+    syncDivisionRequirement() {}, ensureAvailableDatePreset() {}, renderDateRangeFilter() {},
+    renderLast8Control() {}, lockInputs() {}, syncCredentials() {},
+    crossReferenceClassifiers: records => records,
+    renderMatchList() {}, updateStatusCounts() {},
+    renderAll: () => {
+      assert.equal(context._avg([60, 80]), 70);
+      context.renderClassBox('co');
+      renders++;
+    },
+    console,
+  });
+  // Retain the old startup promise when reproducing the race, rather than
+  // letting its expected missing-dependency rejection escape the test.
+  vm.runInContext(startup.replace(/^initializeDashboard\(\);$/m,
+    'globalThis.earlyStartup = initializeDashboard();'), context);
+  const earlyStartup = context.earlyStartup?.catch(() => {});
+  await earlyStartup;
+  assert.equal(storageCalls, 0, 'storage restoration must not start while dependency scripts are loading');
+  assert.equal(listeners.length, 1);
+  assert.equal(listeners[0].event, 'DOMContentLoaded');
+  assert.equal(listeners[0].options.once, true);
+  vm.runInContext('function _avg(values) { return values.reduce((a, b) => a + b, 0) / values.length; }\n'
+    + 'function renderClassBox() {}', context);
+  await listeners[0].handler();
+  assert.equal(storageCalls, 1);
+  assert.equal(renders, 1);
+  assert.equal(context.allResults.length, 1);
+});
+
+test('theme restoration also waits for dependency scripts before its startup render', async () => {
+  const script = fs.readFileSync('extension/dashboard.js', 'utf8');
+  const startup = script.slice(script.indexOf('async function initializeThemeSettings('),
+    script.indexOf("themeToggle.addEventListener('click'"));
+  const listeners = [], applied = [], persisted = [];
+  let storageCalls = 0;
+  const context = vm.createContext({
+    document: { addEventListener: (event, handler, options) => { listeners.push({ event, handler, options }); } },
+    chrome: { storage: {
+      sync: { get: async () => { storageCalls++; return { themeMode: 'dark', accent: 'purple' }; } },
+      local: { get: async () => { storageCalls++; return { themeMode: 'light', accent: 'blue' }; } },
+    } },
+    validThemeModes: new Set(['system', 'light', 'dark']),
+    validAccents: new Set(['blue', 'dark-green', 'bright-green', 'purple']),
+    applyThemeSettings: (mode, accent) => {
+      assert.equal(typeof context._avg, 'function');
+      assert.equal(typeof context.renderClassBox, 'function');
+      applied.push([mode, accent]);
+    },
+    persistThemeSettings: (mode, accent) => { persisted.push([mode, accent]); },
+  });
+  vm.runInContext(startup, context);
+  assert.equal(storageCalls, 0);
+  assert.equal(listeners.length, 1);
+  assert.equal(listeners[0].event, 'DOMContentLoaded');
+  assert.equal(listeners[0].options.once, true);
+  vm.runInContext('function _avg() {}\nfunction renderClassBox() {}', context);
+  await listeners[0].handler();
+  assert.equal(storageCalls, 2);
+  assert.deepEqual(applied, [['dark', 'purple']]);
+  assert.deepEqual(persisted, applied);
+});

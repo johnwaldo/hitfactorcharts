@@ -2,13 +2,14 @@
 
 const PS_BASE = 'https://practiscore.com';
 const USPSA_BASE = 'https://uspsa.org';
-const CACHE_SCHEMA_VERSION = 3;
+const CACHE_SCHEMA_VERSION = 4;
 const STORAGE_SCHEMA_VERSION = 2;
 const HISTORY_SYNC_SCHEMA_VERSION = 1;
 const BACKUP_FORMAT_VERSION = 1;
 const MAX_HISTORY_PAGES = 100;
 const MAX_RESULTS_PAGES = 100;
 const HISTORY_OVERLAP_PAGES = 2;
+const VERIFICATION_REQUIRED_CODE = 'PRACTISCORE_VERIFICATION_REQUIRED';
 const FULL_HISTORY_SCAN_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 const FULL_HISTORY_SCAN_RUN_INTERVAL = 10;
 const MAX_BACKUP_BYTES = 8 * 1024 * 1024;
@@ -140,17 +141,32 @@ function isCompatibleCompleteCache(value) {
     value.stages.length === metadata.expected_stage_count;
 }
 
+function isValidMatchTimeBenchmark(value) {
+  const benchmark = value?.match_time_benchmarks;
+  if (!isRecord(benchmark) || benchmark.version !== 1) return false;
+  if (benchmark.state === 'unavailable') return typeof benchmark.reason === 'string' && !!benchmark.reason &&
+    typeof benchmark.retryable === 'boolean';
+  if (benchmark.state !== 'complete' || !Number.isInteger(benchmark.stage_count) || benchmark.stage_count <= 0 ||
+      !Array.isArray(value.stages) ||
+      benchmark.stage_count !== value.stages?.length || !Number.isInteger(benchmark.eligible_count) || benchmark.eligible_count <= 0 ||
+      value.stages.some(stage => !Number.isInteger(stage?.num) || stage.num <= 0 || !Number.isFinite(stage.time) || stage.time <= 0) ||
+      new Set(value.stages.map(stage => stage.num)).size !== benchmark.stage_count) return false;
+  return ['shooter', 'overall', 'division'].every(key => {
+    const entry = benchmark[key];
+    return isRecord(entry) && typeof entry.competitor_id === 'string' && !!entry.competitor_id &&
+      !!normalizeRequestedDivision(entry.division) && Number.isFinite(entry.total_time) && entry.total_time > 0;
+  }) && normalizeRequestedDivision(benchmark.shooter.division) === normalizeRequestedDivision(value.division) &&
+    normalizeRequestedDivision(benchmark.division.division) === normalizeRequestedDivision(value.division) &&
+    ['overall', 'division'].every(key => Number.isInteger(benchmark[key].tie_count) && benchmark[key].tie_count > 0 &&
+      benchmark[key].tie_count <= benchmark.eligible_count) &&
+    benchmark.overall.total_time <= benchmark.division.total_time &&
+    benchmark.division.total_time <= benchmark.shooter.total_time &&
+    Math.abs(value.stages.reduce((sum, stage) => sum + stage.time, 0) - benchmark.shooter.total_time) <= 1e-7;
+}
+
 function hasTimeBenchmarkCapability(value) {
-  if (!isRecord(value) || !Array.isArray(value.stages)) return false;
-  return value.stages.every(stage => {
-    if (stage?.is_classifier === true) return true;
-    const shooterTime = Number(stage?.time);
-    // Invalid shooter times are intentionally unusable, not a reason to refetch
-    // an otherwise complete cache forever.
-    if (!Number.isFinite(shooterTime) || shooterTime <= 0) return true;
-    const benchmark = Number(stage?.fastest_combined_time);
-    return Number.isFinite(benchmark) && benchmark > 0;
-  });
+  // Source limitations are terminal, but transient coverage failures need repair.
+  return isValidMatchTimeBenchmark(value) && value.match_time_benchmarks.retryable !== true;
 }
 
 async function migrateStorage() {
@@ -237,6 +253,9 @@ function validateBackupData(backup) {
           (stage.xdiv_benchmarks !== undefined && !isRecord(stage.xdiv_benchmarks))) {
         throw new Error('Backup cache contains invalid stage fields.');
       }
+    }
+    if (cached.match_time_benchmarks != null && !isValidMatchTimeBenchmark(cached)) {
+      throw new Error('Backup match-time benchmarks are invalid.');
     }
     if (typeof cached.cache_completeness !== 'undefined') {
       const completeness = cached.cache_completeness;
@@ -713,6 +732,20 @@ async function runInTab(tabId, fn, args = []) {
   return res[0].result;
 }
 
+async function preserveVerificationTab(tabId, error) {
+  if (tabId == null || error?.code !== VERIFICATION_REQUIRED_CODE) return false;
+
+  // Stop scraping, but leave the real challenge available for the user to finish.
+  // A focus failure must not mask the original error or trigger tab cleanup.
+  try {
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (tab?.windowId != null) await chrome.windows.update(tab.windowId, { focused: true });
+  } catch (focusError) {
+    console.warn('[HFC] Verification tab could not be focused:', focusError);
+  }
+  return true;
+}
+
 function buildResult(match, score, memberNumber) {
   return {
     match_id:    match.match_id,
@@ -730,6 +763,7 @@ function buildResult(match, score, memberNumber) {
     total:       score.total       ?? null,
     found_by:    score.found_by    || null,
     stages:      score.stages      || null,
+    match_time_benchmarks: score.match_time_benchmarks ?? null,
     cached_for:  (memberNumber || '').toUpperCase() || null,
     fetched_at:  Date.now(),
   };
@@ -869,6 +903,7 @@ function getResultsNewState(mem, nm) {
   const hi = {
     place: ths.findIndex(h => /^(place|#|rank|no\.?)$/.test(h)),
     mem:   ths.findIndex(h => /mem/.test(h)),
+    id:    ths.findIndex(h => /^(competitor|shooter)\s*(id|number|#)$/.test(h)),
     div:   ths.findIndex(h => /^div/.test(h)),
     cls:   ths.findIndex(h => /^class$/.test(h)),
     pct:   ths.findIndex(h => /^(%|pct|percent|match\s*%|stage\s*%)$/.test(h)),
@@ -896,6 +931,7 @@ function getResultsNewState(mem, nm) {
   if (!total) return { _loading: true, _debug: 'table has 0 rows' };
 
   const selectedResultLevel = document.getElementById('resultLevel')?.value ?? null;
+  const selectedDivisionLevel = document.getElementById('divisionLevel')?.value ?? null;
   const wrapper = table.closest('.dataTables_wrapper, .card, .panel') || table.parentElement?.parentElement || document;
   const nextControl = [...wrapper.querySelectorAll('a, button')].find(control => {
     const label = `${control.textContent || ''} ${control.getAttribute('aria-label') || ''} ${control.getAttribute('rel') || ''}`.trim();
@@ -914,10 +950,25 @@ function getResultsNewState(mem, nm) {
   function parseRow(row) {
     const cells = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
     const out   = { total, hit_columns: hitColumns };
+    // Never associate stage rows by rank or display name. Member numbers and
+    // explicit source competitor IDs are stable; absent identity is unavailable.
+    const member = hi.mem >= 0 ? (cells[hi.mem] || '').trim().toUpperCase() : '';
+    // Live PractiScore tables put shooterid on the name link, including rows
+    // without member numbers. Conflicting explicit IDs must remain unavailable.
+    const sourceIds = new Set([
+      row.getAttribute('data-competitor-id'), row.getAttribute('data-shooter-id'),
+      hi.id >= 0 ? cells[hi.id] : '',
+      ...Array.from(row.querySelectorAll('a[shooterid]'), link => link.getAttribute('shooterid')),
+    ].map(value => (value || '').trim()).filter(Boolean));
+    const sourceId = sourceIds.size === 1 ? sourceIds.values().next().value : '';
+    out.competitor_id = sourceIds.size > 1 ? null
+      : member && !/^(?:-|—|n\/a|none)$/i.test(member) ? `member:${member}`
+      : sourceId ? `source:${sourceId}` : null;
+    out.ineligible = /\b(?:DQ|DNF|DNS|disqualified|incomplete)\b|did not (?:finish|start)/i.test(cells.join(' '));
     if (hi.div  >= 0) out.division = cells[hi.div] || '';
     if (hi.cls  >= 0) out.class_   = cells[hi.cls] || '';
     if (hi.hf   >= 0) out.hf       = parseFloat(cells[hi.hf])   || null;
-    if (hi.time >= 0) out.time     = parseFloat(cells[hi.time])  || null;
+    if (hi.time >= 0) out.time     = /^\d+(?:\.\d+)?$/.test(cells[hi.time]) ? Number(cells[hi.time]) : null;
     if (hi.a    >= 0) out.a        = parseInt(cells[hi.a])   || 0;
     if (hi.b    >= 0) out.b        = parseInt(cells[hi.b])   || 0;
     if (hi.c    >= 0) out.c        = parseInt(cells[hi.c])   || 0;
@@ -981,6 +1032,7 @@ function getResultsNewState(mem, nm) {
       _rowCount: total,
       pageMatchType,
       selectedResultLevel,
+      selectedDivisionLevel,
       hasNextPage: !!nextControl,
       hasPreviousPage: !!previousControl,
       pageSignature,
@@ -994,6 +1046,7 @@ function getResultsNewState(mem, nm) {
     _rowCount: total, _headers: ths,
     pageMatchType,
     selectedResultLevel,
+    selectedDivisionLevel,
     hasNextPage: !!nextControl,
     hasPreviousPage: !!previousControl,
     pageSignature,
@@ -1052,13 +1105,23 @@ function resetResultsPagination() {
   return { clicked: true, alreadyFirst: false };
 }
 
-async function collectResultsPages(tabId, memberNumber, name, push, expectedResultLevel = null) {
+async function collectResultsPages(tabId, memberNumber, name, push, expectedResultLevel = null, expectedDivisionLevel = null) {
   const allRows = [];
   const seen = new Set();
   let found = null;
   let last = null;
 
-  const beforeReset = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
+  const readState = async () => {
+    const state = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
+    if (state?._cf) {
+      const error = new Error('PractiScore requires human verification. Complete the check in the open PractiScore tab, then retry this match refresh.');
+      error.code = VERIFICATION_REQUIRED_CODE;
+      throw error;
+    }
+    return state;
+  };
+
+  const beforeReset = await readState();
   const reset = await runInTab(tabId, resetResultsPagination);
   if (reset?.alreadyFirst === false && !reset.clicked) {
     return { ...(beforeReset || {}), allCompetitorRows: [], _paginationIncomplete: true };
@@ -1070,7 +1133,7 @@ async function collectResultsPages(tabId, memberNumber, name, push, expectedResu
     let resetSettled = false;
     for (let attempt = 0; attempt < 8; attempt++) {
       await sleep(300 + attempt * 100);
-      const state = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
+      const state = await readState();
       if (!state?._loading && state?.pageSignature && state.pageSignature !== beforeReset?.pageSignature) {
         resetSettled = true;
         break;
@@ -1083,14 +1146,16 @@ async function collectResultsPages(tabId, memberNumber, name, push, expectedResu
 
   for (let pageNumber = 1; pageNumber <= MAX_RESULTS_PAGES; pageNumber++) {
     let state = null;
+    let expectedReady = false;
     for (let attempt = 0; attempt < 8; attempt++) {
-      state = await runInTab(tabId, getResultsNewState, [memberNumber || '', name || '']);
+      state = await readState();
       const selected = state?.selectedResultLevel;
-      const expectedReady = expectedResultLevel == null || String(selected) === String(expectedResultLevel);
+      expectedReady = (expectedResultLevel == null || String(selected) === String(expectedResultLevel)) &&
+        (expectedDivisionLevel == null || String(state?.selectedDivisionLevel) === String(expectedDivisionLevel));
       if (!state?._loading && expectedReady && state?.pageSignature && !seen.has(state.pageSignature)) break;
       await sleep(500 + attempt * 150);
     }
-    if (!state || state._loading || !state.pageSignature || seen.has(state.pageSignature)) {
+    if (!state?._ready || state._loading || !expectedReady || !state.pageSignature || seen.has(state.pageSignature)) {
       return { ...(found || last || state || {}), allCompetitorRows: allRows, _paginationIncomplete: true };
     }
 
@@ -1298,11 +1363,77 @@ function median(arr) {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+// Only complete per-competitor sums are candidates. The full field remains
+// transient; persist just the reporting shooter and deterministic tied references.
+function computeTotalTimeBenchmarks(fields, expectedStageNums, rosterRows) {
+  const unavailable = (reason, retryable = false) => ({ version: 1, state: 'unavailable', reason, retryable });
+  const expected = new Set(expectedStageNums);
+  if (!expected.size || expected.size !== expectedStageNums.length ||
+      [...expected].some(num => !Number.isInteger(num) || num <= 0) ||
+      fields.length !== expected.size || new Set(fields.map(field => field.num)).size !== expected.size ||
+      fields.some(field => !expected.has(field.num) || !field.complete || !field.rows?.length)) {
+    return unavailable('Full match stage/combined-field coverage could not be verified.', true);
+  }
+  const entries = new Map();
+  if (!Array.isArray(rosterRows) || !rosterRows.length) return unavailable('Complete overall roster could not be verified.', true);
+  for (const row of rosterRows) {
+    const div = normalizeRequestedDivision(row.division);
+    if (!row.competitor_id || !div) {
+      if (row.ineligible) continue;
+      return unavailable('Overall roster competitor identity or division is unavailable.');
+    }
+    const key = `${row.competitor_id}|${div}`;
+    if (entries.has(key)) return unavailable('Duplicate competitor identity makes the overall roster ambiguous.');
+    entries.set(key, { competitor_id: row.competitor_id, division: div, times: new Map(), ineligible: row.ineligible === true });
+  }
+  let shooterKey = null;
+  for (const field of fields) {
+    const shooterDiv = normalizeRequestedDivision(field.shooter?.division);
+    const key = field.shooter?.competitor_id && shooterDiv ? `${field.shooter.competitor_id}|${shooterDiv}` : null;
+    if (!key || (shooterKey && key !== shooterKey)) return unavailable('Reporting shooter identity is missing or inconsistent.');
+    shooterKey = key;
+    const seen = new Set();
+    for (const row of field.rows) {
+      const div = normalizeRequestedDivision(row.division);
+      if (!row.competitor_id || !div) {
+        if (row.ineligible) continue;
+        return unavailable('Combined-field competitor identity or division is unavailable.');
+      }
+      const entryKey = `${row.competitor_id}|${div}`;
+      if (seen.has(entryKey)) return unavailable('Duplicate competitor identity makes the combined field ambiguous.');
+      seen.add(entryKey);
+      if (!entries.has(entryKey)) return unavailable('Stage competitor identity disagrees with the overall roster.', true);
+      const entry = entries.get(entryKey);
+      entry.ineligible ||= row.ineligible === true;
+      entry.times.set(field.num, row.time);
+      if (entryKey === shooterKey && (row.time !== field.shooter.time || field.shooter.ineligible)) {
+        return unavailable('Reporting shooter data disagrees with the combined field or is ineligible.');
+      }
+    }
+  }
+  const eligible = [...entries.entries()].filter(([, entry]) => !entry.ineligible &&
+    entry.times.size === expected.size && [...entry.times.values()].every(time => Number.isFinite(time) && time > 0))
+    .map(([key, entry]) => ({ key, competitor_id: entry.competitor_id, division: entry.division,
+      total_time: [...entry.times.values()].reduce((sum, time) => sum + time, 0) }))
+    .filter(entry => Number.isFinite(entry.total_time) && entry.total_time > 0)
+    .sort((a, b) => a.total_time - b.total_time || a.key.localeCompare(b.key));
+  const shooter = eligible.find(entry => entry.key === shooterKey);
+  if (!shooter) return unavailable('Reporting shooter does not have eligible raw times for every match stage.');
+  const reference = candidates => {
+    const fastest = candidates[0];
+    return { competitor_id: fastest.competitor_id, division: fastest.division, total_time: fastest.total_time,
+      tie_count: candidates.filter(entry => Math.abs(entry.total_time - fastest.total_time) < 1e-9).length };
+  };
+  return { version: 1, state: 'complete', stage_count: expected.size, eligible_count: eligible.length,
+    shooter: { competitor_id: shooter.competitor_id, division: shooter.division, total_time: shooter.total_time },
+    overall: reference(eligible), division: reference(eligible.filter(entry => entry.division === shooter.division)) };
+}
+
 // ── Fetch stage stats via #resultLevel dropdown (tab already on results/new) ───
 // Also captures all competitor rows to compute GM benchmark HF per stage,
 // and fetches the Combined (all-divisions) view to find the best HF across
 // all divisions for field-strength-adjusted scoring.
-async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageOptions, push, classifierMap, divisionOptions) {
+async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageOptions, push, classifierMap, divisionOptions, timeRoster) {
   const definitionCount = classifierMap instanceof Map ? classifierMap.size : null;
   if (!stageOptions || !stageOptions.length) {
     push('     stage enumeration incomplete: no stage options found');
@@ -1315,6 +1446,7 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
       fetchedCount: 0,
       failedStages,
       state: definitionCount ? 'partial' : 'unknown',
+      match_time_benchmarks: computeTotalTimeBenchmarks([], []),
     };
   }
 
@@ -1333,6 +1465,7 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
   push(`     fetching ${stageOptions.length} stage(s)…`);
   const stages = [];
   const failedStages = [];
+  const timeFields = [];
 
   for (const opt of stageOptions) {
     const stageValue = opt.href || opt.value || opt.text;
@@ -1340,7 +1473,7 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
     for (let attempt = 0; attempt < 2 && !page?._found; attempt++) {
       await runInTab(tabId, setSelectAndFire, ['resultLevel', stageValue]);
       await sleep(500 + attempt * 500);
-      page = await collectResultsPages(tabId, memberNumber, name, push, stageValue);
+      page = await collectResultsPages(tabId, memberNumber, name, push, stageValue, userDivOpt?.value);
       if (!page?._found || page._paginationIncomplete) {
         push(`     ${opt.text}: attempt ${attempt + 1} incomplete`);
         page = null;
@@ -1353,7 +1486,7 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
       continue;
     }
 
-    const d = page.competitorData;
+    const d = { ...page.competitorData, division: page.competitorData.division || divKey };
     const stageName = opt.text.replace(/^stage\s*\d+\s*[:\-–]?\s*/i, '').trim() || opt.text;
     const stageNum  = parseInt(opt.text.match(/\d+/)?.[0]) || stages.length + 1;
     const classifier = classifierMap?.get(stageNum) || {};
@@ -1381,7 +1514,7 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
       await runInTab(tabId, setSelectAndFire, ['divisionLevel', combinedOpt.value]);
       await sleep(900);
 
-      const combinedPage = await collectResultsPages(tabId, memberNumber, name, push, stageValue);
+      const combinedPage = await collectResultsPages(tabId, memberNumber, name, push, stageValue, combinedOpt.value);
 
       if (combinedPage?._paginationIncomplete) {
         push(`     ${opt.text}: combined results pagination incomplete`);
@@ -1394,6 +1527,8 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
       }
 
       const combinedRows = combinedPage?.allCompetitorRows || [];
+      timeFields.push({ num: stageNum, shooter: d, rows: combinedRows,
+        complete: combinedPage?._ready === true && !combinedPage._paginationIncomplete });
       fastestCombinedTime = combinedRows
         .map(row => Number(row.time))
         .filter(time => Number.isFinite(time) && time > 0)
@@ -1472,7 +1607,13 @@ async function fetchStageData(tabId, matchId, memberNumber, name, divKey, stageO
     }
   }
   const state = failedStages.length === 0 && fetchedCount === expectedCount ? 'complete' : 'partial';
-  return { stages, expectedCount, fetchedCount, failedStages, state };
+  const expectedNums = classifierMap instanceof Map && classifierMap.size
+    ? [...classifierMap.keys()].map(Number) : stageOptions.map(option => parseInt(option.text.match(/\d+/)?.[0]));
+  const match_time_benchmarks = combinedOpt ? computeTotalTimeBenchmarks(timeFields, expectedNums, timeRoster)
+    : { version: 1, state: 'unavailable', reason: 'Source has no combined-field view.', retryable: false };
+  push(`     total match time: ${match_time_benchmarks.state === 'complete'
+    ? `${match_time_benchmarks.eligible_count} complete competitors` : match_time_benchmarks.reason}`);
+  return { stages, expectedCount, fetchedCount, failedStages, state, match_time_benchmarks };
 }
 
 // ── USPSA.org classification page scraper ─────────────────────────────────────
@@ -1746,7 +1887,7 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
     const cachedMatches = [];
     const uncachedMatches = [];
     const divisionSkips = { mismatch: 0, unresolved: 0 };
-    const repairCounts = { partial: 0, unknown: 0, owner: 0, new: 0 };
+    const repairCounts = { partial: 0, unknown: 0, benchmark: 0, owner: 0, new: 0 };
     for (const match of uspsaMatches) {
       const cached = cache[match.match_id];
       if (isSameOwnerCache(cached, memberNumber) && normalizeRequestedDivision(cached.division) && divisionSkip(cached.division, requestedDivision)) {
@@ -1768,7 +1909,7 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
       push(`Reusing ${cachedMatches.length} cached in-range match(es).`);
     }
 
-    push(`Detail work: ${cachedMatches.length} complete cache reused; ${repairCounts.partial} partial repair(s); ${repairCounts.unknown} legacy/unknown repair(s); ${repairCounts.owner} owner mismatch(es); ${repairCounts.new} new match(es).`);
+    push(`Detail work: ${cachedMatches.length} complete cache reused; ${repairCounts.partial} partial repair(s); ${repairCounts.unknown} legacy/unknown repair(s); ${repairCounts.benchmark} total-time capability repair(s); ${repairCounts.owner} owner mismatch(es); ${repairCounts.new} new match(es).`);
     push(`Fetching details for ${uncachedMatches.length} in-range USPSA match(es)…`);
 
     let expectedStageCount = 0;
@@ -1794,7 +1935,7 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
         ? await fetchMatchDef(match.match_id, push)
         : null;
       const stageRepair = score.overall_pct != null
-        ? await fetchStageData(tabId, match.match_id, memberNumber, name, score._divKey, score._stageOptions, push, classifierMap, score._divisionOptions)
+        ? await fetchStageData(tabId, match.match_id, memberNumber, name, score._divKey, score._stageOptions, push, classifierMap, score._divisionOptions, score._timeRoster)
         : { stages: [], expectedCount: null, fetchedCount: 0, failedStages: [], state: 'unknown' };
       const previous = isSameOwnerCache(cache[match.match_id], memberNumber) && !divisionSkip(cache[match.match_id].division, requestedDivision) ? cache[match.match_id] : null;
       const stages = mergeStageRepair(previous?.stages, stageRepair);
@@ -1805,7 +1946,7 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
         fetched_stage_count: stageRepair.fetchedCount,
         failed_stages: stageRepair.failedStages,
       };
-      const fetchedResult = buildResult(match, { ...score, stages }, memberNumber);
+      const fetchedResult = buildResult(match, { ...score, stages, match_time_benchmarks: stageRepair.match_time_benchmarks }, memberNumber);
       const result = score.overall_pct != null
         ? { ...(previous || {}), ...fetchedResult, stages, cache_completeness: completeness }
         : { ...match, ...(previous || fetchedResult), _detail_error: true };
@@ -1864,6 +2005,7 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
       completeCacheReused: cachedMatches.length,
       partialRepairs: repairCounts.partial,
       unknownRepairs: repairCounts.unknown,
+      benchmarkRepairs: repairCounts.benchmark,
       newMatches: repairCounts.new,
       expectedStages: expectedStageCount,
       fetchedStages: fetchedStageCount,
@@ -1878,6 +2020,9 @@ async function fetchScores(memberNumber, name, requestedTimeline, { fullHistory 
     };
     return { results: combinedResults, log, classificationData, _not_logged_in_uspsa, fetchScope, fetchCoverage, fetchDiagnostics };
 
+  } catch (error) {
+    if (await preserveVerificationTab(tabId, error)) tabId = null;
+    throw error;
   } finally {
     if (tabId) chrome.tabs.remove(tabId).catch(() => {});
   }
@@ -1917,13 +2062,13 @@ async function refreshMatch(match, memberNumber, name, requestedDivision) {
       ? await fetchMatchDef(match.match_id, push)
       : null;
     const stageRepair = score.overall_pct != null
-      ? await fetchStageData(tabId, match.match_id, memberNumber, name, score._divKey, score._stageOptions, push, classifierMap, score._divisionOptions)
+      ? await fetchStageData(tabId, match.match_id, memberNumber, name, score._divKey, score._stageOptions, push, classifierMap, score._divisionOptions, score._timeRoster)
       : { stages: [], expectedCount: null, fetchedCount: 0, failedStages: [], state: 'unknown' };
     const previous = owned && !divisionSkip(owned.division, requestedDivision) ? owned : null;
     const stages = mergeStageRepair(previous?.stages, stageRepair);
     const result = {
       ...(previous || {}),
-      ...buildResult(match, { ...score, stages }, memberNumber),
+      ...buildResult(match, { ...score, stages, match_time_benchmarks: stageRepair.match_time_benchmarks }, memberNumber),
       stages,
       cache_completeness: {
         schema_version: CACHE_SCHEMA_VERSION,
@@ -1949,6 +2094,9 @@ async function refreshMatch(match, memberNumber, name, requestedDivision) {
     push(`Done — ${score.overall_pct != null ? score.overall_pct + '%' : 'not found'} [${score.found_by || 'none'}]`);
     return { result: { ...result, _cached: false }, log };
 
+  } catch (error) {
+    if (await preserveVerificationTab(tabId, error)) tabId = null;
+    throw error;
   } finally {
     if (tabId) chrome.tabs.remove(tabId).catch(() => {});
   }
@@ -1995,6 +2143,18 @@ async function fetchMatchScore(tabId, matchId, memberNumber, name, push, request
   if (overallOpt) {
     await runInTab(tabId, setSelectAndFire, ['resultLevel', overallOpt.value]);
     await sleep(600);
+  }
+
+  // Overall status can disqualify a competitor even when all stage times exist.
+  // Verify the complete combined roster before returning to the user's division.
+  const combinedOpt = state.divisionOptions.find(option =>
+    /^(combined|all|overall)$/i.test(option.text.trim()) || option.value === '' || option.value === 'combined');
+  let timeRoster = null;
+  if (overallOpt && combinedOpt) {
+    await runInTab(tabId, setSelectAndFire, ['divisionLevel', combinedOpt.value]);
+    await sleep(600);
+    const overallState = await collectResultsPages(tabId, memberNumber, name, push, overallOpt.value, combinedOpt.value);
+    if (overallState?._ready && !overallState._paginationIncomplete) timeRoster = overallState.allCompetitorRows;
   }
 
   // ── Step 3: set #divisionLevel to the competitor's division ──────────────
@@ -2048,6 +2208,7 @@ async function fetchMatchScore(tabId, matchId, memberNumber, name, push, request
     _divisionOptions: state.divisionOptions,
     _stageOptions: stageOptions,
     _divKey:     divKey,
+    _timeRoster: timeRoster,
     _stageLinks: stageOptions.map((o, i) => ({ num: i, href: o.value, text: o.text })),
   };
 }

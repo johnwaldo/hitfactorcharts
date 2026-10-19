@@ -370,14 +370,17 @@ function exportChartCSV() {
   // In classifiersOnly mode, only classifier stages are included.
   const headers = [
     'Date', 'Match', 'Division', 'Class', 'Overall %', 'Div %', 'Place', 'Div Place',
+    'Overall Time %', 'Division Time %', 'Complete Match Raw Time (s)',
+    'Overall Fastest Complete Raw Time (s)', 'Division Fastest Complete Raw Time (s)',
     'Stage', 'Stage HF', 'Stage Match %', 'Stage Time', 'A', 'B', 'C', 'D', 'M', 'NS', 'M+NS', 'P',
     'Stage Included', 'Stage Note', 'CM #', 'CM Name', 'USPSA %',
     'Adjusted %', 'Adjusted Ref Division', 'Adjusted Ref Class', 'Adjusted Ref HF',
-    'Adjusted Normalized HF', 'Adjusted Method', 'Time %', 'Fastest Combined Time',
+    'Adjusted Normalized HF', 'Adjusted Method', 'Legacy Stage Time % (non-classifier)', 'Legacy Fastest Combined Stage Time (s)',
   ];
   const rows = [headers];
 
   for (const r of viewSorted) {
+    const overallTime = getMatchTimeComparison(r, 'overall'), divisionTime = getMatchTimeComparison(r, 'division');
     const matchCols = [
       r.date        || '',
       r.match_name  || '',
@@ -387,6 +390,11 @@ function exportChartCSV() {
       effectiveDivPct(r)     != null ? effectiveDivPct(r).toFixed(2)     : '',
       r.place       != null ? r.place                   : '',
       r.div_place   != null ? r.div_place               : '',
+      overallTime?.pct.toFixed(2) ?? '',
+      divisionTime?.pct.toFixed(2) ?? '',
+      overallTime?.shooterTime.toFixed(2) ?? '',
+      overallTime?.championTime.toFixed(2) ?? '',
+      divisionTime?.championTime.toFixed(2) ?? '',
     ];
 
     if (!r.stages?.length) {

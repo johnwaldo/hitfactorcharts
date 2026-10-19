@@ -19,6 +19,58 @@ const ACCURACY_TREND_WARP_POINTS = Object.freeze([
 ]);
 const ACCURACY_TREND_TICKS = Object.freeze([0, 1, 2, 5, 10, 20, 40, 50, 100]);
 
+// Complete-match time ignores stage-analysis overrides and includes classifiers.
+// Legacy stage minima must never be presented as a real competitor's match total.
+function getMatchTimeComparison(match, scope = 'overall') {
+  const benchmark = match?.match_time_benchmarks;
+  const completeness = match?.cache_completeness;
+  const matchDivision = typeof match?.division === 'string' ? normalizeDivision(match.division) : null;
+  if (!['overall', 'division'].includes(scope) || benchmark?.version !== 1 || benchmark.state !== 'complete' ||
+      !matchDivision || !Array.isArray(match.stages) ||
+      match.stages.some(stage => !Number.isInteger(stage?.num) || stage.num <= 0) ||
+      completeness?.state !== 'complete' || !Array.isArray(completeness.failed_stages) || completeness.failed_stages.length ||
+      !Number.isInteger(benchmark.stage_count) || benchmark.stage_count <= 0 ||
+      benchmark.stage_count !== completeness.expected_stage_count || benchmark.stage_count !== completeness.fetched_stage_count ||
+      benchmark.stage_count !== match.stages?.length || new Set(match.stages.map(stage => stage.num)).size !== benchmark.stage_count) return null;
+  const shooter = benchmark.shooter, champion = benchmark[scope];
+  if (![shooter, benchmark.overall, benchmark.division].every(entry => entry && typeof entry.competitor_id === 'string' &&
+      !!entry.competitor_id && typeof entry.division === 'string' && normalizeDivision(entry.division) &&
+      Number.isFinite(entry.total_time) && entry.total_time > 0) ||
+      normalizeDivision(shooter.division) !== matchDivision ||
+      normalizeDivision(benchmark.division.division) !== matchDivision ||
+      benchmark.overall.total_time > benchmark.division.total_time || benchmark.division.total_time > shooter.total_time ||
+      match.stages.some(stage => !Number.isFinite(stage.time) || stage.time <= 0) ||
+      Math.abs(match.stages.reduce((sum, stage) => sum + stage.time, 0) - shooter.total_time) > 1e-7) return null;
+  return { pct: Math.min(champion.total_time / shooter.total_time * 100, 100),
+    shooterTime: shooter.total_time, championTime: champion.total_time, referenceScope: scope,
+    referenceDivision: champion.division, tieCount: champion.tie_count, stageCount: benchmark.stage_count };
+}
+
+function computeMatchTimePct(match, scope = 'overall') {
+  return getMatchTimeComparison(match, scope)?.pct ?? null;
+}
+
+function buildMatchTimeSeries(matches, scope) {
+  const light = document.documentElement.getAttribute('data-theme') === 'light';
+  return { label: scope === 'overall' ? 'Overall Time %' : 'Division Time %',
+    color: scope === 'overall' ? (light ? '#007a91' : '#00d9ff') : (light ? '#b85c00' : '#ffb454'),
+    dash: scope === 'overall' ? [8, 4] : [2, 4],
+    points: matches.map(match => {
+      const comparison = getMatchTimeComparison(match, scope);
+      return { date: match.date, y: comparison?.pct ?? null, label: match.match_name,
+        division: match.division, timeComparison: comparison };
+    }) };
+}
+
+function matchTimeTooltip(comparison) {
+  if (!comparison) return '';
+  const scope = comparison.referenceScope === 'overall' ? 'overall' : divisionLabel(comparison.referenceDivision);
+  const ties = comparison.tieCount > 1 ? ` (${comparison.tieCount} tied)` : '';
+  return `<div class="tt-meta">Your complete match: ${comparison.shooterTime.toFixed(2)}s</div>` +
+    `<div class="tt-meta">Fastest raw time · ${escHtml(scope)}: ${comparison.championTime.toFixed(2)}s${ties}</div>` +
+    `<div class="tt-meta">${comparison.stageCount} stages, including classifiers · not an official score winner</div>`;
+}
+
 function chartYAxisTicks(rawMin, rawMax, showPercentageReferenceGuides = false) {
   if (!showPercentageReferenceGuides) {
     return Array.from({ length: 6 }, (_, index) => rawMin + (rawMax - rawMin) * index / 5);
@@ -405,7 +457,7 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
     if (!points.length) return;
 
     ctx.strokeStyle = s.color; ctx.lineWidth = s.dash ? 1.5 : 2;
-    if (s.dash) ctx.setLineDash([6, 4]);
+    if (s.dash) ctx.setLineDash(Array.isArray(s.dash) ? s.dash : [6, 4]);
     ctx.beginPath();
     let priorPointWasUnavailable = true;
     s.points.forEach((point, index) => {
@@ -532,10 +584,10 @@ function drawMultiSeriesChart(canvas, seriesArr, allDates, opts = {}) {
           tooltipEl.innerHTML = `
             <div class="tt-name">${escHtml(h.label)}</div>
             <div class="tt-date">${escHtml(h.date || '')}</div>
-            ${mainVal}${divLine}${overallLine}${pctLine}${seriesLine}${nameLine}${matchNameLine}${hfLine}${hitsLine}${stagesHtml}
+            ${mainVal}${divLine}${overallLine}${pctLine}${seriesLine}${matchTimeTooltip(h.timeComparison)}${nameLine}${matchNameLine}${hfLine}${hitsLine}${stagesHtml}
           `;
         }
-        const tw = 300, th = (h.multiMatch || h.stages?.length) ? 280 : 130;
+        const tw = 300, th = (h.multiMatch || h.stages?.length) ? 280 : h.timeComparison ? 230 : 130;
         const tx = e.clientX + 14 + tw > window.innerWidth  ? e.clientX - tw - 8 : e.clientX + 14;
         const ty = e.clientY - 10 + th > window.innerHeight ? e.clientY - th      : e.clientY - 10;
         tooltipEl.style.left    = tx + 'px';
