@@ -11,6 +11,7 @@ Primary flow:
   7. Return list[MatchResult]
 """
 
+import os
 import re
 import time
 import json
@@ -18,6 +19,20 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from playwright.sync_api import sync_playwright, Page, Browser, BrowserContext, Frame
+
+# Installed, auto-updating Brave replaces Playwright's bundled Chromium, which
+# is pinned to an early build and misses later Chrome security patches.
+# Override with AIDEVOPS_PLAYWRIGHT_EXECUTABLE; there is no bundled fallback.
+DEFAULT_BRAVE = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+
+
+def browser_executable() -> str:
+    path = os.environ.get("AIDEVOPS_PLAYWRIGHT_EXECUTABLE", "").strip() or DEFAULT_BRAVE
+    if not os.path.isfile(path):
+        raise RuntimeError(
+            f"Brave not found at {path}. Install Brave or set AIDEVOPS_PLAYWRIGHT_EXECUTABLE."
+        )
+    return path
 
 
 @dataclass
@@ -48,8 +63,10 @@ class PractiScoreScraper:
         self._captured_json: list[dict] = []
 
     def __enter__(self):
+        executable = browser_executable()
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(
+            executable_path=executable,
             headless=self.headless,
             args=["--disable-blink-features=AutomationControlled"],
         )
