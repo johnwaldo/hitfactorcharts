@@ -1,7 +1,7 @@
 {
   "schema": "aidevops.repo-metrics.v1",
   "schema_version": 1,
-  "generated_at": "2026-10-01T15:52:21Z",
+  "generated_at": "2026-11-10T22:02:51Z",
   "tool": {
     "name": "aidevops repo-metrics",
     "version": "1.0.0"
@@ -11,10 +11,10 @@
     "slug": "johnwaldo/hitfactorcharts"
   },
   "summary": {
-    "source_files": 37,
-    "code": 10677,
-    "comments": 437,
-    "blanks": 1535,
+    "source_files": 38,
+    "code": 11831,
+    "comments": 483,
+    "blanks": 1600,
     "languages": 8,
     "dependencies": 5
   },
@@ -22,55 +22,55 @@
     {
       "name": "JavaScript",
       "files": 11,
-      "code": 6217,
-      "comments": 335,
-      "blanks": 726,
-      "percentage": 58.23,
+      "code": 7249,
+      "comments": 355,
+      "blanks": 761,
+      "percentage": 61.27,
       "color": "#f1e05a"
     },
     {
       "name": "HTML",
       "files": 1,
-      "code": 1764,
-      "comments": 0,
+      "code": 1777,
+      "comments": 1,
       "blanks": 74,
-      "percentage": 16.52,
+      "percentage": 15.02,
       "color": "#e34c26"
     },
     {
       "name": "Markdown",
       "files": 13,
-      "code": 1358,
+      "code": 1434,
       "comments": 0,
-      "blanks": 518,
-      "percentage": 12.72,
+      "blanks": 541,
+      "percentage": 12.12,
       "color": "#083fa1"
     },
     {
       "name": "Python",
       "files": 3,
-      "code": 1134,
-      "comments": 63,
-      "blanks": 185,
-      "percentage": 10.62,
+      "code": 1145,
+      "comments": 66,
+      "blanks": 188,
+      "percentage": 9.68,
       "color": "#3572A5"
     },
     {
       "name": "YAML",
-      "files": 4,
-      "code": 127,
-      "comments": 25,
-      "blanks": 23,
-      "percentage": 1.19,
+      "files": 5,
+      "code": 148,
+      "comments": 47,
+      "blanks": 27,
+      "percentage": 1.25,
       "color": "#cb171e"
     },
     {
       "name": "Shell",
       "files": 2,
-      "code": 30,
+      "code": 31,
       "comments": 14,
       "blanks": 9,
-      "percentage": 0.28,
+      "percentage": 0.26,
       "color": "#89e051"
     },
     {
@@ -79,7 +79,7 @@
       "code": 27,
       "comments": 0,
       "blanks": 0,
-      "percentage": 0.25,
+      "percentage": 0.23,
       "color": "#292929"
     },
     {
@@ -88,12 +88,14 @@
       "code": 20,
       "comments": 0,
       "blanks": 0,
-      "percentage": 0.19,
+      "percentage": 0.17,
       "color": "#6e7781"
     }
   ],
   "dependencies": {
     "direct": 5,
+    "runtime": 5,
+    "dev": 0,
     "locked": 0,
     "total": 5,
     "ecosystems": [
@@ -104,6 +106,8 @@
         "path": "requirements.txt",
         "ecosystem": "python",
         "direct": 5,
+        "runtime": 5,
+        "dev": 0,
         "locked": 0,
         "dependencies": [
           "beautifulsoup4",
@@ -111,7 +115,8 @@
           "playwright",
           "plotly",
           "streamlit"
-        ]
+        ],
+        "dev_dependencies": []
       }
     ]
   },
